@@ -5,76 +5,91 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { useState, useRef, useEffect } from 'react'
 import { getRecipe, addRecipeAnnotation, updateRecipeAnnotation, deleteRecipeAnnotation } from '@/lib/api'
-import { MessageSquarePlus, Image as ImageIcon, X, Loader2, PenLine, Edit, Trash2 } from 'lucide-react'
+import {
+  ChevronLeft,
+  Image as ImageIcon,
+  X,
+  Loader2,
+  PenLine,
+  Edit,
+  Trash2,
+  Users,
+  Clock,
+  Flame,
+  Check,
+  NotebookPen,
+  ExternalLink,
+} from 'lucide-react'
 import EditRecipeModal from '@/components/EditRecipeModal'
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
-const FAMILY_MEMBERS: Record<string, {name: string, color: string}> = {
-  '1': { name: 'Mom', color: 'bg-red-100 text-red-700' },
-  '2': { name: 'Dad', color: 'bg-blue-100 text-blue-700' },
-  '3': { name: 'Kids', color: 'bg-green-100 text-green-700' },
+const AVATAR_COLORS: Record<string, { bg: string; text: string }> = {
+  '1': { bg: 'oklch(92% 0.035 34)',  text: 'oklch(40% 0.14 34)' },
+  '2': { bg: 'oklch(91% 0.025 220)', text: 'oklch(38% 0.10 220)' },
+  '3': { bg: 'oklch(93% 0.040 128)', text: 'oklch(42% 0.075 128)' },
+}
+const FAMILY_NAMES: Record<string, string> = {
+  '1': 'Mom', '2': 'Dad', '3': 'Kids',
 }
 
-interface Ingredient {
-  qty: number
-  unit: string
-  item: string
-  note?: string
-}
-
-interface Instruction {
-  step_number: number
-  text: string
-  image_path?: string
-}
-
+interface Ingredient { qty: number; unit: string; item: string; note?: string }
+interface Instruction  { step_number: number; text: string; image_path?: string }
 interface Annotation {
-  id: string
-  recipe_id: string
-  user_id?: string
-  step_index?: number
-  content: string
-  image_path?: string
-  created_at: string
+  id: string; recipe_id: string; user_id?: string
+  step_index?: number; content: string; image_path?: string; created_at: string
+}
+interface Recipe {
+  id: string; title: string; description?: string; cover_image?: string
+  original_yield?: number; prep_time?: number; cook_time?: number; source_url?: string
+  ingredients: Ingredient[]; instructions: Instruction[]
+  tags: { id: string; name: string }[]; annotations: Annotation[]
 }
 
-interface Recipe {
-  id: string
-  title: string
-  description?: string
-  cover_image?: string
-  original_yield?: number
-  prep_time?: number
-  cook_time?: number
-  source_url?: string
-  ingredients: Ingredient[]
-  instructions: Instruction[]
-  tags: { id: string; name: string }[]
-  annotations: Annotation[]
+/* ── Skeleton ──────────────────────────────────────────────── */
+function RecipeSkeleton() {
+  return (
+    <div style={{ maxWidth: '768px', margin: '0 auto', padding: '0 24px 96px' }}>
+      <div style={{ paddingBlock: '32px', display: 'flex', justifyContent: 'space-between' }}>
+        <div className="skeleton" style={{ height: '16px', width: '60px' }} />
+        <div className="skeleton" style={{ height: '32px', width: '100px' }} />
+      </div>
+      <div className="skeleton" style={{ height: '280px', width: '100%', borderRadius: 'var(--radius-xl)', marginBottom: '32px' }} />
+      <div className="skeleton" style={{ height: '36px', width: '55%', marginBottom: '10px' }} />
+      <div className="skeleton" style={{ height: '17px', width: '90%', marginBottom: '6px' }} />
+      <div className="skeleton" style={{ height: '17px', width: '75%', marginBottom: '28px' }} />
+      <div className="skeleton" style={{ height: '72px', width: '100%', borderRadius: 'var(--radius-lg)', marginBottom: '24px' }} />
+      {[80, 70, 85, 65].map((w, i) => (
+        <div key={i} className="skeleton" style={{ height: '42px', width: `${w}%`, marginBottom: '8px', borderRadius: 'var(--radius-md)' }} />
+      ))}
+      <div className="skeleton" style={{ height: '24px', width: '120px', marginTop: '32px', marginBottom: '16px' }} />
+      {[1, 2, 3].map(i => (
+        <div key={i} className="skeleton" style={{ height: '80px', width: '100%', borderRadius: 'var(--radius-xl)', marginBottom: '12px' }} />
+      ))}
+    </div>
+  )
 }
 
 export default function RecipeDetail() {
-  const params = useParams()
-  const recipeId = params.id as string
-  const queryClient = useQueryClient()
+  const params        = useParams()
+  const recipeId      = params.id as string
+  const queryClient   = useQueryClient()
 
-  const [activeStep, setActiveStep] = useState<number | null>(null)
-  const [noteContent, setNoteContent] = useState('')
-  const [noteImage, setNoteImage] = useState<File | null>(null)
+  const [activeStep, setActiveStep]       = useState<number | null>(null)
+  const [noteContent, setNoteContent]     = useState('')
+  const [noteImage, setNoteImage]         = useState<File | null>(null)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
-
+  const [checkedIngredients, setCheckedIngredients] = useState<Set<number>>(new Set())
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
-  useEffect(() => {
-    const userCookie = document.cookie.split('; ').find(row => row.startsWith('hestia_user='))
-    if (userCookie) {
-      setCurrentUserId(userCookie.split('=')[1])
-    }
-  }, [])
-
-  const [editingAnnId, setEditingAnnId] = useState<string | null>(null)
+  const [editingAnnId, setEditingAnnId]   = useState<string | null>(null)
   const [editNoteContent, setEditNoteContent] = useState('')
   const [editNoteImage, setEditNoteImage] = useState<File | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    const cookie = document.cookie.split('; ').find(r => r.startsWith('hestia_user='))
+    if (cookie) setCurrentUserId(cookie.split('=')[1])
+  }, [])
 
   const { data: recipe, isLoading, error } = useQuery<Recipe>({
     queryKey: ['recipe', recipeId],
@@ -82,39 +97,24 @@ export default function RecipeDetail() {
   })
 
   const addNoteMutation = useMutation({
-    mutationFn: async (data: FormData) => {
-      return addRecipeAnnotation(recipeId, data)
-    },
+    mutationFn: (data: FormData) => addRecipeAnnotation(recipeId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['recipe', recipeId] })
-      setActiveStep(null)
-      setNoteContent('')
-      setNoteImage(null)
+      setActiveStep(null); setNoteContent(''); setNoteImage(null)
     },
   })
-
   const updateNoteMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: FormData }) => {
-      return updateRecipeAnnotation(id, data)
-    },
+    mutationFn: ({ id, data }: { id: string; data: FormData }) => updateRecipeAnnotation(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['recipe', recipeId] })
-      setEditingAnnId(null)
-      setEditNoteContent('')
-      setEditNoteImage(null)
+      setEditingAnnId(null); setEditNoteContent(''); setEditNoteImage(null)
     },
   })
-
   const deleteNoteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      return deleteRecipeAnnotation(id)
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['recipe', recipeId] })
-    },
+    mutationFn: (id: string) => deleteRecipeAnnotation(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['recipe', recipeId] }),
   })
 
-  // Group annotations by step index
   const annotationsByStep = recipe?.annotations?.reduce((acc, ann) => {
     if (ann.step_index !== undefined && ann.step_index !== null) {
       if (!acc[ann.step_index]) acc[ann.step_index] = []
@@ -123,260 +123,556 @@ export default function RecipeDetail() {
     return acc
   }, {} as Record<number, Annotation[]>) || {}
 
-  const handleAddNote = (stepIndex: number) => {
-    setActiveStep(stepIndex)
-    setNoteContent('')
-    setNoteImage(null)
-  }
-
   const handleSubmitNote = (e: React.FormEvent, stepIndex: number) => {
     e.preventDefault()
     if (!noteContent.trim() && !noteImage) return
-    
-    const formData = new FormData()
-    formData.append('content', noteContent)
-    formData.append('step_index', stepIndex.toString())
-    if (noteImage) {
-      formData.append('image', noteImage)
-    }
-
-    const userCookie = document.cookie.split('; ').find(row => row.startsWith('hestia_user='))
-    const userId = userCookie ? userCookie.split('=')[1] : null
-    if (userId) {
-      formData.append('user_id', userId)
-    }
-    
-    addNoteMutation.mutate(formData)
+    const fd = new FormData()
+    fd.append('content', noteContent)
+    fd.append('step_index', stepIndex.toString())
+    if (noteImage) fd.append('image', noteImage)
+    const cookie = document.cookie.split('; ').find(r => r.startsWith('hestia_user='))
+    if (cookie) fd.append('user_id', cookie.split('=')[1])
+    addNoteMutation.mutate(fd)
   }
 
-  const fileInputRef = useRef<HTMLInputElement>(null)
-
-  if (isLoading) {
-    return (
-      <main className="min-h-screen p-6 bg-[#FDFBF7] text-[#2D2A26] flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-[#CC5500]" />
-      </main>
-    )
+  const toggleIngredient = (i: number) => {
+    setCheckedIngredients(prev => {
+      const next = new Set(prev)
+      next.has(i) ? next.delete(i) : next.add(i)
+      return next
+    })
   }
 
-  if (error || !recipe) {
-    return (
-      <main className="min-h-screen p-6 bg-[#FDFBF7] text-[#2D2A26]">
-        <div className="max-w-3xl mx-auto">
-          <p className="text-red-500">Recipe not found.</p>
-          <Link href="/" className="text-[#CC5500] underline mt-4 inline-block">
-            ← Back to hearth
-          </Link>
-        </div>
-      </main>
-    )
-  }
+  if (isLoading) return (
+    <main style={{ minHeight: '100vh', background: 'var(--color-canvas)' }}>
+      <RecipeSkeleton />
+    </main>
+  )
+
+  if (error || !recipe) return (
+    <main style={{ minHeight: '100vh', background: 'var(--color-canvas)', padding: '24px' }}>
+      <div style={{ maxWidth: '768px', margin: '0 auto' }}>
+        <p style={{ color: 'var(--color-error)' }}>Recipe not found.</p>
+        <Link href="/" style={{ color: 'var(--color-brand)', textDecoration: 'underline', marginTop: '16px', display: 'inline-block' }}>
+          ← Back to hearth
+        </Link>
+      </div>
+    </main>
+  )
+
+  const totalTime = (recipe.prep_time || 0) + (recipe.cook_time || 0)
 
   return (
-    <main className="min-h-screen p-6 bg-[#FDFBF7] text-[#2D2A26]">
-      <div className="max-w-3xl mx-auto pb-24">
-        <div className="flex justify-between items-center mb-8">
-          <Link href="/" className="text-sm text-[#8A9A5B] hover:underline inline-flex items-center gap-2 transition-colors">
-            ← Back to hearth
-          </Link>
-          <button 
-            onClick={() => setIsEditModalOpen(true)}
-            className="flex items-center gap-2 text-sm text-gray-500 hover:text-[#CC5500] transition-colors bg-white px-3 py-1.5 rounded-lg border border-gray-200 shadow-sm hover:border-[#CC5500]/30"
+    <main style={{ minHeight: '100vh', background: 'var(--color-canvas)', color: 'var(--color-ink)' }}>
+      <div style={{ maxWidth: '768px', margin: '0 auto', padding: '0 24px 96px' }}>
+
+        {/* Nav bar */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBlock: '32px' }}>
+          <Link
+            href="/"
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: '4px',
+              fontSize: '14px', fontWeight: 500, color: 'var(--color-ink-secondary)',
+              textDecoration: 'none',
+              transition: `color var(--duration-fast) var(--ease-standard)`,
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'var(--color-ink)' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'var(--color-ink-secondary)' }}
           >
-            <PenLine className="w-4 h-4" /> Edit Recipe
+            <ChevronLeft size={16} /> Back
+          </Link>
+          <button
+            onClick={() => setIsEditModalOpen(true)}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: '6px',
+              fontSize: '13px', fontWeight: 500, color: 'var(--color-ink-secondary)',
+              background: 'var(--color-surface-raised)',
+              border: '1px solid var(--color-border)',
+              borderRadius: 'var(--radius-md)',
+              padding: '8px 14px',
+              cursor: 'pointer',
+              boxShadow: 'var(--shadow-xs)',
+              transition: `border-color var(--duration-fast) var(--ease-standard),
+                           color var(--duration-fast) var(--ease-standard)`,
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.borderColor = 'var(--color-brand)'
+              e.currentTarget.style.color = 'var(--color-brand-text)'
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.borderColor = 'var(--color-border)'
+              e.currentTarget.style.color = 'var(--color-ink-secondary)'
+            }}
+          >
+            <PenLine size={14} /> Edit Recipe
           </button>
         </div>
 
+        {/* Cover image */}
         {recipe.cover_image && (
           <img
             src={recipe.cover_image}
             alt={recipe.title}
-            className="w-full h-72 object-cover rounded-2xl mb-8 shadow-sm"
+            style={{
+              display: 'block', width: '100%', height: '280px',
+              objectFit: 'cover',
+              borderRadius: 'var(--radius-xl)',
+              boxShadow: 'var(--shadow-md)',
+              marginBottom: '32px',
+            }}
           />
         )}
 
-        <h1 className="text-4xl font-serif text-[#CC5500] mb-3 tracking-tight">{recipe.title}</h1>
+        {/* Title */}
+        <h1
+          style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: '2.25rem',
+            lineHeight: 1.15,
+            fontWeight: 600,
+            color: 'var(--color-ink)',
+            letterSpacing: 'var(--tracking-tight)',
+            marginBottom: '10px',
+          }}
+        >
+          {recipe.title}
+        </h1>
+
+        {/* Description */}
         {recipe.description && (
-          <p className="text-lg text-gray-600 mb-6 leading-relaxed bg-white/50 p-4 rounded-xl border border-orange-50">{recipe.description}</p>
+          <p
+            style={{
+              fontSize: '1.0625rem',
+              lineHeight: 1.7,
+              color: 'var(--color-ink-secondary)',
+              marginBottom: '28px',
+            }}
+          >
+            {recipe.description}
+          </p>
         )}
 
-        <div className="flex gap-4 text-sm text-gray-500 mb-8 flex-wrap items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-          {recipe.original_yield && <span className="flex items-center gap-1.5"><span className="text-gray-400">Yields:</span> <span className="font-medium text-gray-700">{recipe.original_yield}</span></span>}
-          {recipe.original_yield && <span className="text-gray-300">•</span>}
-          {recipe.prep_time && <span className="flex items-center gap-1.5"><span className="text-gray-400">Prep:</span> <span className="font-medium text-gray-700">{recipe.prep_time}m</span></span>}
-          {recipe.prep_time && <span className="text-gray-300">•</span>}
-          {recipe.cook_time && <span className="flex items-center gap-1.5"><span className="text-gray-400">Cook:</span> <span className="font-medium text-gray-700">{recipe.cook_time}m</span></span>}
-        </div>
+        {/* Metadata row */}
+        {(recipe.original_yield || recipe.prep_time || recipe.cook_time) && (
+          <div
+            style={{
+              background: 'var(--color-brand-muted)',
+              border: '1px solid oklch(87% 0.040 34)',
+              borderRadius: 'var(--radius-lg)',
+              padding: '16px 20px',
+              display: 'flex',
+              gap: '28px',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              marginBottom: '24px',
+            }}
+          >
+            {recipe.original_yield && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)', color: 'var(--color-ink-muted)' }}>Yield</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 600, color: 'var(--color-ink)' }}>
+                  <Users size={16} style={{ color: 'var(--color-brand)' }} />
+                  {recipe.original_yield}
+                </span>
+              </div>
+            )}
+            {recipe.original_yield && (recipe.prep_time || recipe.cook_time) && (
+              <div style={{ width: '1px', height: '24px', background: 'oklch(84% 0.045 34)', alignSelf: 'center' }} />
+            )}
+            {recipe.prep_time && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)', color: 'var(--color-ink-muted)' }}>Prep</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 600, color: 'var(--color-ink)' }}>
+                  <Clock size={16} style={{ color: 'var(--color-brand)' }} />
+                  {recipe.prep_time}m
+                </span>
+              </div>
+            )}
+            {recipe.prep_time && recipe.cook_time && (
+              <div style={{ width: '1px', height: '24px', background: 'oklch(84% 0.045 34)', alignSelf: 'center' }} />
+            )}
+            {recipe.cook_time && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)', color: 'var(--color-ink-muted)' }}>Cook</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 600, color: 'var(--color-ink)' }}>
+                  <Flame size={16} style={{ color: 'var(--color-brand)' }} />
+                  {recipe.cook_time}m
+                </span>
+              </div>
+            )}
+          </div>
+        )}
 
+        {/* Tags */}
         {recipe.tags && recipe.tags.length > 0 && (
-          <div className="flex gap-2 mb-10 flex-wrap">
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '40px' }}>
             {recipe.tags.map(tag => (
-              <span key={tag.id} className="px-3.5 py-1.5 bg-[#8A9A5B]/10 text-[#8A9A5B] text-sm rounded-full font-medium">
+              <span
+                key={tag.id}
+                style={{
+                  background: 'var(--color-sage-muted)',
+                  color: 'var(--color-sage-text)',
+                  border: '1px solid oklch(85% 0.040 128)',
+                  borderRadius: 'var(--radius-pill)',
+                  padding: '5px 12px',
+                  fontSize: '12px',
+                  fontWeight: 500,
+                  letterSpacing: 'var(--tracking-label)',
+                  textTransform: 'uppercase',
+                }}
+              >
                 {tag.name}
               </span>
             ))}
           </div>
         )}
 
+        {/* Ingredients */}
         {recipe.ingredients && recipe.ingredients.length > 0 && (
-          <section className="mb-12 bg-white p-6 rounded-2xl shadow-sm border border-[#8A9A5B]/10">
-            <h2 className="text-2xl font-serif mb-5 text-[#8A9A5B]">Ingredients</h2>
-            <ul className="space-y-3">
-              {recipe.ingredients.map((ing, i) => (
-                <li key={i} className="flex items-start gap-4 p-2 rounded-xl hover:bg-[#FDFBF7] transition group">
-                  <span className="w-5 h-5 rounded border-2 border-[#8A9A5B]/40 flex-shrink-0 mt-0.5 group-hover:border-[#8A9A5B] transition-colors" />
-                  <span className="text-[1.05rem] text-gray-800">
-                    <span className="font-semibold text-gray-700">{ing.qty} {ing.unit}</span> {ing.item}
-                    {ing.note && <span className="text-gray-400 italic ml-1.5">({ing.note})</span>}
-                  </span>
-                </li>
-              ))}
+          <section style={{ marginBottom: '48px' }}>
+            <h2
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: '1.5rem',
+                fontWeight: 600,
+                color: 'var(--color-sage-text)',
+                borderLeft: '3px solid var(--color-sage)',
+                paddingLeft: '12px',
+                marginBottom: '20px',
+                lineHeight: 1.3,
+              }}
+            >
+              Ingredients
+            </h2>
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+              {recipe.ingredients.map((ing, i) => {
+                const checked = checkedIngredients.has(i)
+                return (
+                  <li
+                    key={i}
+                    onClick={() => toggleIngredient(i)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '14px',
+                      padding: '10px 12px',
+                      borderRadius: 'var(--radius-md)',
+                      cursor: 'pointer',
+                      background: checked ? 'var(--color-surface-sunken)' : 'transparent',
+                      transition: `background var(--duration-fast) var(--ease-standard)`,
+                    }}
+                    onMouseEnter={e => {
+                      if (!checked) e.currentTarget.style.background = 'var(--color-surface-sunken)'
+                    }}
+                    onMouseLeave={e => {
+                      if (!checked) e.currentTarget.style.background = 'transparent'
+                    }}
+                  >
+                    {/* Checkbox */}
+                    <div
+                      style={{
+                        width: '18px',
+                        height: '18px',
+                        borderRadius: '4px',
+                        border: checked ? '2px solid var(--color-sage)' : '2px solid var(--color-border)',
+                        background: checked ? 'var(--color-sage-muted)' : 'transparent',
+                        flexShrink: 0,
+                        marginTop: '2px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        transition: `border-color var(--duration-fast), background var(--duration-fast)`,
+                      }}
+                    >
+                      {checked && <Check size={12} style={{ color: 'var(--color-sage)' }} strokeWidth={2.5} />}
+                    </div>
+                    <span
+                      style={{
+                        fontSize: '15px',
+                        color: checked ? 'var(--color-ink-muted)' : 'var(--color-ink)',
+                        textDecoration: checked ? 'line-through' : 'none',
+                        transition: 'color var(--duration-fast), text-decoration var(--duration-fast)',
+                      }}
+                    >
+                      <strong style={{ fontWeight: 600, color: checked ? 'var(--color-ink-muted)' : 'var(--color-ink)' }}>
+                        {ing.qty} {ing.unit}
+                      </strong>{' '}
+                      {ing.item}
+                      {ing.note && (
+                        <span style={{ fontSize: '13px', fontStyle: 'italic', color: 'var(--color-ink-muted)', marginLeft: '6px' }}>
+                          ({ing.note})
+                        </span>
+                      )}
+                    </span>
+                  </li>
+                )
+              })}
             </ul>
           </section>
         )}
 
+        {/* Instructions */}
         {recipe.instructions && recipe.instructions.length > 0 && (
-          <section className="mb-12">
-            <h2 className="text-2xl font-serif mb-6 text-[#CC5500]">Instructions</h2>
-            <ol className="space-y-6">
-              {recipe.instructions.map((inst) => {
+          <section style={{ marginBottom: '48px' }}>
+            <h2
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: '1.5rem',
+                fontWeight: 600,
+                color: 'var(--color-brand-text)',
+                borderLeft: '3px solid var(--color-brand)',
+                paddingLeft: '12px',
+                marginBottom: '24px',
+                lineHeight: 1.3,
+              }}
+            >
+              Instructions
+            </h2>
+            <ol style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+              {recipe.instructions.map(inst => {
                 const stepAnns = annotationsByStep[inst.step_number] || []
                 const isAddingNote = activeStep === inst.step_number
 
                 return (
-                  <div key={inst.step_number} className="group relative">
-                    <li className="flex gap-4 p-5 bg-white rounded-2xl shadow-sm border border-orange-50 hover:shadow-md transition-shadow relative">
-                      <span className="w-8 h-8 bg-[#CC5500]/10 text-[#CC5500] rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 shadow-sm border border-[#CC5500]/20">
+                  <div key={inst.step_number} style={{ marginBottom: '16px' }}>
+                    {/* Step card */}
+                    <li
+                      className="group"
+                      style={{
+                        background: 'var(--color-surface-raised)',
+                        border: '1px solid var(--color-border-subtle)',
+                        borderRadius: 'var(--radius-xl)',
+                        padding: '20px',
+                        boxShadow: 'var(--shadow-xs)',
+                        display: 'flex',
+                        gap: '16px',
+                        position: 'relative',
+                        transition: `box-shadow var(--duration-base) var(--ease-standard),
+                                     border-color var(--duration-base) var(--ease-standard)`,
+                      }}
+                      onMouseEnter={e => {
+                        e.currentTarget.style.boxShadow = 'var(--shadow-sm)'
+                        e.currentTarget.style.borderColor = 'var(--color-border)'
+                      }}
+                      onMouseLeave={e => {
+                        e.currentTarget.style.boxShadow = 'var(--shadow-xs)'
+                        e.currentTarget.style.borderColor = 'var(--color-border-subtle)'
+                      }}
+                    >
+                      {/* Step number badge */}
+                      <div
+                        style={{
+                          width: '32px',
+                          height: '32px',
+                          borderRadius: 'var(--radius-pill)',
+                          background: 'var(--color-brand-muted)',
+                          color: 'var(--color-brand)',
+                          fontFamily: 'var(--font-display)',
+                          fontSize: '15px',
+                          fontWeight: 600,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                        }}
+                      >
                         {inst.step_number}
-                      </span>
-                      <div className="flex-1">
-                        <p className="pt-1 text-lg text-gray-800 leading-relaxed pr-8">{inst.text}</p>
+                      </div>
+
+                      <div style={{ flex: 1, paddingRight: '32px' }}>
+                        <p style={{ fontSize: '1.0625rem', lineHeight: 1.7, color: 'var(--color-ink)', margin: 0, paddingTop: '4px' }}>
+                          {inst.text}
+                        </p>
                         {inst.image_path && (
-                          <img 
-                            src={`${BASE_URL}${inst.image_path}`} 
-                            alt={`Step ${inst.step_number}`} 
-                            className="mt-4 max-h-60 w-auto rounded-xl object-cover shadow-sm border border-orange-100/50"
+                          <img
+                            src={`${BASE_URL}${inst.image_path}`}
+                            alt={`Step ${inst.step_number}`}
+                            style={{
+                              marginTop: '16px',
+                              maxHeight: '240px',
+                              width: 'auto',
+                              borderRadius: 'var(--radius-lg)',
+                              objectFit: 'cover',
+                              boxShadow: 'var(--shadow-sm)',
+                            }}
                           />
                         )}
                       </div>
-                      
-                      {/* Hover action to add note */}
+
+                      {/* Add note button (hover) */}
                       {!isAddingNote && (
-                        <button 
-                          onClick={() => handleAddNote(inst.step_number)}
-                          className="absolute top-4 right-4 text-gray-300 hover:text-[#CC5500] bg-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-all shadow-sm border border-gray-100 hover:border-[#CC5500]/30 z-10"
-                          title="Add a note or photo to this step"
+                        <button
+                          onClick={() => { setActiveStep(inst.step_number); setNoteContent(''); setNoteImage(null) }}
+                          title="Add a note to this step"
+                          style={{
+                            position: 'absolute',
+                            top: '16px',
+                            right: '16px',
+                            background: 'var(--color-surface-raised)',
+                            border: '1px solid var(--color-border)',
+                            borderRadius: 'var(--radius-md)',
+                            padding: '6px',
+                            cursor: 'pointer',
+                            color: 'var(--color-ink-muted)',
+                            opacity: 0,
+                            transition: `opacity var(--duration-fast), border-color var(--duration-fast), color var(--duration-fast)`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                          className="group-hover:opacity-100"
+                          onMouseEnter={e => {
+                            e.currentTarget.style.borderColor = 'var(--color-brand)'
+                            e.currentTarget.style.color = 'var(--color-brand)'
+                          }}
+                          onMouseLeave={e => {
+                            e.currentTarget.style.borderColor = 'var(--color-border)'
+                            e.currentTarget.style.color = 'var(--color-ink-muted)'
+                          }}
                         >
-                          <MessageSquarePlus className="w-5 h-5" />
+                          <NotebookPen size={18} />
                         </button>
                       )}
                     </li>
 
-                    {/* Render Annotations below this step */}
-                    {stepAnns.length > 0 && (
-                      <div className="mt-3 ml-12 space-y-3">
+                    {/* Annotation thread */}
+                    {(stepAnns.length > 0 || isAddingNote) && (
+                      <div
+                        style={{
+                          marginLeft: '44px',
+                          borderLeft: '2px solid var(--color-border)',
+                          paddingLeft: '16px',
+                          marginTop: '8px',
+                        }}
+                      >
                         {stepAnns.map(ann => {
-                          const user = ann.user_id ? FAMILY_MEMBERS[ann.user_id] : null;
-                          const initial = user ? user.name.charAt(0) : '?';
-                          const avatarColor = user ? user.color : 'bg-gray-100 text-gray-500';
-                          const isOwner = currentUserId === ann.user_id;
-                          const isEditingThis = editingAnnId === ann.id;
+                          const avatarStyle = ann.user_id ? AVATAR_COLORS[ann.user_id] : { bg: 'var(--color-surface-sunken)', text: 'var(--color-ink-muted)' }
+                          const authorName  = ann.user_id ? FAMILY_NAMES[ann.user_id] : null
+                          const isOwner     = currentUserId === ann.user_id
+                          const isEditing   = editingAnnId === ann.id
 
                           return (
-                            <div key={ann.id} className="relative bg-[#FDFBF7] p-4 rounded-xl border border-[#CC5500]/10 shadow-sm flex gap-3 items-start group">
-                              <div className="absolute -left-2 top-6 w-2 h-2 rounded-full bg-[#CC5500]/40"></div>
-                              
-                              <div className={`w-8 h-8 rounded-full flex items-center justify-center font-medium shadow-sm flex-shrink-0 text-sm ${avatarColor}`}>
-                                {initial}
+                            <div
+                              key={ann.id}
+                              className="group"
+                              style={{
+                                background: 'var(--color-canvas)',
+                                border: '1px solid var(--color-border-subtle)',
+                                borderRadius: 'var(--radius-lg)',
+                                padding: '14px 16px',
+                                marginBottom: '8px',
+                                display: 'flex',
+                                gap: '12px',
+                                alignItems: 'flex-start',
+                              }}
+                            >
+                              {/* Avatar */}
+                              <div
+                                style={{
+                                  width: '30px',
+                                  height: '30px',
+                                  borderRadius: 'var(--radius-pill)',
+                                  background: avatarStyle.bg,
+                                  color: avatarStyle.text,
+                                  fontFamily: 'var(--font-display)',
+                                  fontSize: '13px',
+                                  fontWeight: 600,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  flexShrink: 0,
+                                }}
+                              >
+                                {ann.user_id ? FAMILY_NAMES[ann.user_id]?.charAt(0) : '?'}
                               </div>
-                              
-                              <div className="flex-1 flex flex-col gap-1.5 pt-1">
-                                <div className="flex justify-between items-start">
-                                  {user && <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{user.name}</span>}
-                                  {isOwner && !isEditingThis && (
-                                    <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                      <button 
-                                        onClick={() => {
-                                          setEditingAnnId(ann.id);
-                                          setEditNoteContent(ann.content);
-                                          setEditNoteImage(null);
-                                        }}
-                                        className="text-gray-400 hover:text-[#8A9A5B] transition-colors"
-                                        title="Edit comment"
+
+                              <div style={{ flex: 1 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '4px' }}>
+                                  {authorName && (
+                                    <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-ink-muted)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)' }}>
+                                      {authorName}
+                                    </span>
+                                  )}
+                                  {isOwner && !isEditing && (
+                                    <div style={{ display: 'flex', gap: '8px', opacity: 0, transition: 'opacity var(--duration-fast)' }} className="group-hover:opacity-100">
+                                      <button
+                                        onClick={() => { setEditingAnnId(ann.id); setEditNoteContent(ann.content); setEditNoteImage(null) }}
+                                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-ink-disabled)', padding: '2px', display: 'flex' }}
+                                        onMouseEnter={e => { e.currentTarget.style.color = 'var(--color-sage)' }}
+                                        onMouseLeave={e => { e.currentTarget.style.color = 'var(--color-ink-disabled)' }}
+                                        title="Edit"
                                       >
-                                        <Edit className="w-3.5 h-3.5" />
+                                        <Edit size={13.5} />
                                       </button>
-                                      <button 
+                                      <button
                                         onClick={() => {
-                                          if (confirm('Are you sure you want to delete this comment?')) {
-                                            deleteNoteMutation.mutate(ann.id)
-                                          }
+                                          if (confirm('Delete this comment?')) deleteNoteMutation.mutate(ann.id)
                                         }}
-                                        className="text-gray-400 hover:text-red-500 transition-colors"
-                                        title="Delete comment"
+                                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-ink-disabled)', padding: '2px', display: 'flex' }}
+                                        onMouseEnter={e => { e.currentTarget.style.color = 'var(--color-error)' }}
+                                        onMouseLeave={e => { e.currentTarget.style.color = 'var(--color-ink-disabled)' }}
+                                        title="Delete"
                                       >
-                                        <Trash2 className="w-3.5 h-3.5" />
+                                        <Trash2 size={13.5} />
                                       </button>
                                     </div>
                                   )}
                                 </div>
-                                
-                                {isEditingThis ? (
-                                  <form 
-                                    className="flex flex-col gap-3 mt-2"
-                                    onSubmit={(e) => {
-                                      e.preventDefault();
-                                      const formData = new FormData();
-                                      if (editNoteContent.trim() !== ann.content) {
-                                        formData.append('content', editNoteContent);
-                                      }
-                                      if (editNoteImage) {
-                                        formData.append('image', editNoteImage);
-                                      }
+
+                                {isEditing ? (
+                                  <form
+                                    onSubmit={e => {
+                                      e.preventDefault()
+                                      const fd = new FormData()
+                                      if (editNoteContent.trim() !== ann.content) fd.append('content', editNoteContent)
+                                      if (editNoteImage) fd.append('image', editNoteImage)
                                       if (editNoteContent.trim() !== ann.content || editNoteImage) {
-                                          updateNoteMutation.mutate({ id: ann.id, data: formData });
+                                        updateNoteMutation.mutate({ id: ann.id, data: fd })
                                       } else {
-                                        setEditingAnnId(null);
+                                        setEditingAnnId(null)
                                       }
                                     }}
+                                    style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}
                                   >
-                                    <textarea 
+                                    <textarea
                                       autoFocus
-                                      className="w-full text-sm resize-none focus:outline-none placeholder-gray-400 text-gray-700 bg-white border border-[#CC5500]/20 rounded-lg p-2 min-h-[60px]"
                                       value={editNoteContent}
                                       onChange={e => setEditNoteContent(e.target.value)}
+                                      style={{
+                                        width: '100%', fontSize: '14px', lineHeight: 1.6, resize: 'none',
+                                        border: '1px solid oklch(87% 0.040 34)',
+                                        borderRadius: 'var(--radius-md)',
+                                        padding: '8px 10px',
+                                        background: 'var(--color-surface-raised)',
+                                        color: 'var(--color-ink)',
+                                        outline: 'none',
+                                        minHeight: '60px',
+                                        boxSizing: 'border-box',
+                                      }}
                                     />
-                                    <div className="flex justify-between items-center">
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                       <div>
-                                        <input 
-                                          type="file" 
-                                          accept="image/*" 
-                                          className="hidden" 
-                                          id={`edit-file-${ann.id}`}
-                                          onChange={e => setEditNoteImage(e.target.files?.[0] || null)}
-                                        />
-                                        <label 
-                                          htmlFor={`edit-file-${ann.id}`}
-                                          className="text-gray-400 hover:text-[#8A9A5B] transition flex items-center gap-1.5 text-sm font-medium px-2 py-1 rounded-md hover:bg-gray-50 cursor-pointer"
-                                        >
-                                          <ImageIcon className="w-4 h-4" /> {editNoteImage ? 'Change Photo' : 'Update Photo'}
+                                        <input type="file" accept="image/*" className="hidden" id={`edit-file-${ann.id}`} onChange={e => setEditNoteImage(e.target.files?.[0] || null)} />
+                                        <label htmlFor={`edit-file-${ann.id}`} style={{ fontSize: '13px', color: 'var(--color-ink-muted)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                          <ImageIcon size={14} /> {editNoteImage ? 'Change Photo' : 'Update Photo'}
                                         </label>
-                                        {editNoteImage && <span className="text-xs text-gray-500 ml-2">{editNoteImage.name}</span>}
                                       </div>
-                                      <div className="flex gap-2">
-                                        <button 
-                                          type="button" 
-                                          onClick={() => setEditingAnnId(null)}
-                                          className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700 font-medium"
-                                        >
+                                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                        <button type="button" onClick={() => setEditingAnnId(null)} style={{ fontSize: '13px', color: 'var(--color-ink-muted)', background: 'none', border: 'none', cursor: 'pointer' }}>
                                           Cancel
                                         </button>
-                                        <button 
-                                          type="submit" 
+                                        <button
+                                          type="submit"
                                           disabled={updateNoteMutation.isPending}
-                                          className="px-3 py-1.5 bg-[#CC5500] text-white text-xs font-medium rounded-lg hover:bg-[#B34A00] transition disabled:opacity-50 flex items-center gap-2 shadow-sm"
+                                          style={{
+                                            fontSize: '13px', fontWeight: 600, color: 'white',
+                                            background: 'var(--color-brand)', border: 'none',
+                                            borderRadius: 'var(--radius-md)', padding: '6px 14px',
+                                            cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                            opacity: updateNoteMutation.isPending ? 0.5 : 1,
+                                          }}
                                         >
-                                          {updateNoteMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Save'}
+                                          {updateNoteMutation.isPending ? <Loader2 size={12} className="animate-spin" /> : 'Save'}
                                         </button>
                                       </div>
                                     </div>
@@ -384,13 +680,15 @@ export default function RecipeDetail() {
                                 ) : (
                                   <>
                                     {ann.content && (
-                                      <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">{ann.content}</p>
+                                      <p style={{ fontSize: '14px', color: 'var(--color-ink)', lineHeight: 1.6, margin: 0, whiteSpace: 'pre-wrap' }}>
+                                        {ann.content}
+                                      </p>
                                     )}
                                     {ann.image_path && (
-                                      <img 
-                                        src={`${BASE_URL}${ann.image_path}`} 
-                                        alt="Step annotation" 
-                                        className="rounded-lg object-cover max-h-60 w-auto border border-gray-200 mt-1"
+                                      <img
+                                        src={`${BASE_URL}${ann.image_path}`}
+                                        alt="Annotation"
+                                        style={{ borderRadius: 'var(--radius-md)', maxHeight: '200px', width: 'auto', marginTop: '8px', border: '1px solid var(--color-border-subtle)' }}
                                       />
                                     )}
                                   </>
@@ -399,77 +697,121 @@ export default function RecipeDetail() {
                             </div>
                           )
                         })}
-                      </div>
-                    )}
 
-                    {/* Add Note Form */}
-                    {isAddingNote && (
-                      <div className="mt-3 ml-12 bg-white rounded-xl shadow-md border border-[#CC5500]/20 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
-                        <div className="bg-[#CC5500]/5 px-4 py-2 border-b border-[#CC5500]/10 flex justify-between items-center">
-                          <span className="text-sm font-medium text-[#CC5500]">Add Note to Step {inst.step_number}</span>
-                          <button onClick={() => setActiveStep(null)} className="text-gray-400 hover:text-gray-600 transition">
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                        <form onSubmit={(e) => handleSubmitNote(e, inst.step_number)} className="p-4 flex flex-col gap-3">
-                          <textarea 
-                            autoFocus
-                            placeholder="Share a tip, what went wrong, what went well..."
-                            className="w-full text-sm resize-none focus:outline-none placeholder-gray-400 text-gray-700 bg-transparent min-h-[60px]"
-                            value={noteContent}
-                            onChange={e => setNoteContent(e.target.value)}
-                          />
-                          
-                          {noteImage && (
-                            <div className="relative inline-block mt-2">
-                              <div className="relative h-20 w-20 rounded-md overflow-hidden border border-gray-200">
-                                <img src={URL.createObjectURL(noteImage)} className="h-full w-full object-cover" alt="Preview"/>
-                              </div>
-                              <button 
-                                type="button" 
-                                onClick={() => setNoteImage(null)}
-                                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5 shadow-sm hover:bg-red-600"
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
-                            </div>
-                          )}
-                          
-                          <div className="flex justify-between items-center mt-2 pt-3 border-t border-gray-100">
-                            <div>
-                              <input 
-                                type="file" 
-                                accept="image/*" 
-                                className="hidden" 
-                                ref={fileInputRef}
-                                onChange={e => setNoteImage(e.target.files?.[0] || null)}
-                              />
-                              <button 
-                                type="button" 
-                                onClick={() => fileInputRef.current?.click()}
-                                className="text-gray-400 hover:text-[#8A9A5B] transition flex items-center gap-1.5 text-sm font-medium px-2 py-1 rounded-md hover:bg-gray-50"
-                              >
-                                <ImageIcon className="w-4 h-4" /> Add Photo
-                              </button>
-                            </div>
-                            <div className="flex gap-2">
-                              <button 
-                                type="button" 
+                        {/* Add note form */}
+                        {isAddingNote && (
+                          <div
+                            style={{
+                              border: '1px solid var(--color-brand)',
+                              borderRadius: 'var(--radius-xl)',
+                              boxShadow: 'var(--shadow-md)',
+                              overflow: 'hidden',
+                              marginBottom: '8px',
+                            }}
+                          >
+                            <div
+                              style={{
+                                background: 'var(--color-brand-muted)',
+                                borderBottom: '1px solid oklch(87% 0.040 34)',
+                                padding: '10px 16px',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                              }}
+                            >
+                              <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-brand-text)' }}>
+                                Step {inst.step_number} — add a note
+                              </span>
+                              <button
                                 onClick={() => setActiveStep(null)}
-                                className="px-3 py-1.5 text-sm text-gray-500 hover:text-gray-700 font-medium"
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-ink-muted)', display: 'flex' }}
                               >
-                                Cancel
-                              </button>
-                              <button 
-                                type="submit" 
-                                disabled={addNoteMutation.isPending || (!noteContent.trim() && !noteImage)}
-                                className="px-4 py-1.5 bg-[#CC5500] text-white text-sm font-medium rounded-lg hover:bg-[#B34A00] transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm"
-                              >
-                                {addNoteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save Note'}
+                                <X size={16} />
                               </button>
                             </div>
+                            <form onSubmit={e => handleSubmitNote(e, inst.step_number)}>
+                              <textarea
+                                autoFocus
+                                placeholder="Share a tip, what went well, what you changed..."
+                                value={noteContent}
+                                onChange={e => setNoteContent(e.target.value)}
+                                style={{
+                                  width: '100%', minHeight: '72px', padding: '14px 16px',
+                                  fontSize: '14px', lineHeight: 1.6, resize: 'none',
+                                  border: 'none', outline: 'none', background: 'transparent',
+                                  color: 'var(--color-ink)', boxSizing: 'border-box',
+                                }}
+                              />
+                              {noteImage && (
+                                <div style={{ padding: '0 16px 8px', position: 'relative', display: 'inline-block', marginLeft: '16px' }}>
+                                  <img src={URL.createObjectURL(noteImage)} style={{ height: '64px', width: '64px', objectFit: 'cover', borderRadius: 'var(--radius-md)' }} alt="Preview" />
+                                  <button
+                                    type="button"
+                                    onClick={() => setNoteImage(null)}
+                                    style={{ position: 'absolute', top: '-4px', right: '-4px', background: 'var(--color-error)', color: 'white', border: 'none', borderRadius: 'var(--radius-pill)', width: '18px', height: '18px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                  >
+                                    <X size={10} />
+                                  </button>
+                                </div>
+                              )}
+                              <div
+                                style={{
+                                  padding: '10px 16px',
+                                  borderTop: '1px solid var(--color-border-subtle)',
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                }}
+                              >
+                                <div>
+                                  <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={e => setNoteImage(e.target.files?.[0] || null)} />
+                                  <button
+                                    type="button"
+                                    onClick={() => fileInputRef.current?.click()}
+                                    style={{
+                                      background: 'none', border: 'none', cursor: 'pointer',
+                                      fontSize: '13px', color: 'var(--color-ink-muted)',
+                                      display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                      padding: '4px 8px', borderRadius: 'var(--radius-sm)',
+                                      transition: `color var(--duration-fast)`,
+                                    }}
+                                    onMouseEnter={e => { e.currentTarget.style.color = 'var(--color-sage)' }}
+                                    onMouseLeave={e => { e.currentTarget.style.color = 'var(--color-ink-muted)' }}
+                                  >
+                                    <ImageIcon size={15} /> Add Photo
+                                  </button>
+                                </div>
+                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => setActiveStep(null)}
+                                    style={{ fontSize: '13px', color: 'var(--color-ink-muted)', background: 'none', border: 'none', cursor: 'pointer' }}
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    type="submit"
+                                    disabled={addNoteMutation.isPending || (!noteContent.trim() && !noteImage)}
+                                    style={{
+                                      fontSize: '13px', fontWeight: 600, color: 'white',
+                                      background: 'var(--color-brand)', border: 'none',
+                                      borderRadius: 'var(--radius-md)', padding: '7px 16px',
+                                      cursor: 'pointer',
+                                      display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                      boxShadow: 'var(--shadow-xs)',
+                                      transition: `background var(--duration-fast)`,
+                                      opacity: (addNoteMutation.isPending || (!noteContent.trim() && !noteImage)) ? 0.4 : 1,
+                                    }}
+                                    onMouseEnter={e => { if (!addNoteMutation.isPending) e.currentTarget.style.background = 'var(--color-brand-hover)' }}
+                                    onMouseLeave={e => { e.currentTarget.style.background = 'var(--color-brand)' }}
+                                  >
+                                    {addNoteMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : 'Save Note'}
+                                  </button>
+                                </div>
+                              </div>
+                            </form>
                           </div>
-                        </form>
+                        )}
                       </div>
                     )}
                   </div>
@@ -479,24 +821,35 @@ export default function RecipeDetail() {
           </section>
         )}
 
+        {/* Source URL */}
         {recipe.source_url && (
-          <div className="border-t border-gray-200 pt-8 mt-12 text-center">
+          <div style={{ marginTop: '48px', textAlign: 'center' }}>
             <a
               href={recipe.source_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-6 py-3 bg-white text-[#8A9A5B] font-medium rounded-xl hover:bg-[#8A9A5B]/5 transition shadow-sm border border-[#8A9A5B]/20"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '14px',
+                color: 'var(--color-sage-text)',
+                textDecoration: 'none',
+                transition: `color var(--duration-fast)`,
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'var(--color-sage)' }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'var(--color-sage-text)' }}
             >
-              View Original Source
+              <ExternalLink size={14} /> Original recipe source
             </a>
           </div>
         )}
       </div>
 
-      <EditRecipeModal 
-        isOpen={isEditModalOpen} 
-        onClose={() => setIsEditModalOpen(false)} 
-        recipe={recipe} 
+      <EditRecipeModal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        recipe={recipe}
       />
     </main>
   )

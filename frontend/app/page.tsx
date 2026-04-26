@@ -1,70 +1,445 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getRecipes } from '@/lib/api'
 import Link from 'next/link'
 import AddRecipeModal from '@/components/AddRecipeModal'
+import {
+  Flame,
+  Search,
+  ChevronDown,
+  Users,
+  Clock,
+  Plus,
+  BookOpen,
+} from 'lucide-react'
+
+const FAMILY_MEMBERS: Record<string, { name: string; initial: string }> = {
+  '1': { name: 'Mom', initial: 'M' },
+  '2': { name: 'Dad', initial: 'D' },
+  '3': { name: 'Kids', initial: 'K' },
+}
+
+function SkeletonCard() {
+  return (
+    <div
+      style={{
+        background: 'var(--color-surface-raised)',
+        border: '1px solid var(--color-border-subtle)',
+        borderRadius: 'var(--radius-xl)',
+        padding: '20px',
+        boxShadow: 'var(--shadow-xs)',
+        marginBottom: '16px',
+        breakInside: 'avoid',
+      }}
+    >
+      <div className="skeleton" style={{ height: '120px', width: '100%', marginBottom: '16px', borderRadius: 'var(--radius-lg)' }} />
+      <div className="skeleton" style={{ height: '20px', width: '65%', marginBottom: '8px' }} />
+      <div className="skeleton" style={{ height: '14px', width: '90%', marginBottom: '6px' }} />
+      <div className="skeleton" style={{ height: '14px', width: '70%', marginBottom: '12px' }} />
+      <div className="skeleton" style={{ height: '12px', width: '40%' }} />
+    </div>
+  )
+}
 
 export default function Home() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+
+  useEffect(() => {
+    const cookie = document.cookie.split('; ').find(r => r.startsWith('hestia_user='))
+    if (cookie) setCurrentUserId(cookie.split('=')[1])
+  }, [])
 
   const { data: recipes, isLoading } = useQuery({
     queryKey: ['recipes'],
-    queryFn: getRecipes
+    queryFn: getRecipes,
   })
 
-  // Simple layout for the hearth dashboard
+  const currentUser = currentUserId ? FAMILY_MEMBERS[currentUserId] : null
+
   return (
-    <main className="min-h-screen p-6 bg-[#FDFBF7] text-[#2D2A26]">
-      <div className="max-w-md mx-auto sm:max-w-2xl lg:max-w-4xl">
-        <header className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-serif text-[#CC5500]">Hestia</h1>
-          <Link href="/login" className="text-sm font-medium hover:underline">
-            Family Login
+    <main
+      style={{ minHeight: '100vh', background: 'var(--color-canvas)', color: 'var(--color-ink)' }}
+    >
+      <div style={{ maxWidth: '960px', margin: '0 auto', padding: '0 24px 96px' }}>
+
+        {/* Header */}
+        <header
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            paddingBlock: '28px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Flame
+              size={20}
+              strokeWidth={1.75}
+              style={{ color: 'var(--color-brand)', flexShrink: 0 }}
+            />
+            <span
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: '28px',
+                fontWeight: 600,
+                color: 'var(--color-brand)',
+                letterSpacing: 'var(--tracking-tight)',
+                lineHeight: 1,
+              }}
+            >
+              Hestia
+            </span>
+          </div>
+
+          <Link
+            href="/login"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              textDecoration: 'none',
+            }}
+          >
+            <div
+              style={{
+                width: '32px',
+                height: '32px',
+                borderRadius: 'var(--radius-pill)',
+                background: 'var(--color-brand-muted)',
+                color: 'var(--color-brand-text)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontFamily: 'var(--font-display)',
+                fontStyle: 'italic',
+                fontSize: '14px',
+                fontWeight: 600,
+              }}
+            >
+              {currentUser ? currentUser.initial : '?'}
+            </div>
+            <ChevronDown
+              size={12}
+              style={{ color: 'var(--color-ink-muted)' }}
+            />
           </Link>
         </header>
 
-        <section className="mb-6">
-          <input 
-            type="search" 
-            placeholder="Search family recipes..." 
-            className="w-full p-4 rounded-xl border border-gray-200 shadow-sm outline-none focus:ring-2 focus:ring-[#8A9A5B]"
+        {/* Search */}
+        <section style={{ marginBottom: '28px', position: 'relative' }}>
+          <Search
+            size={18}
+            style={{
+              position: 'absolute',
+              left: '14px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              color: 'var(--color-ink-muted)',
+              pointerEvents: 'none',
+            }}
+          />
+          <input
+            type="search"
+            placeholder="Search family recipes..."
+            style={{
+              width: '100%',
+              padding: '14px 16px 14px 44px',
+              background: 'var(--color-surface-raised)',
+              border: '1px solid var(--color-border)',
+              borderRadius: 'var(--radius-xl)',
+              fontSize: '15px',
+              color: 'var(--color-ink)',
+              outline: 'none',
+              boxSizing: 'border-box',
+              transition: `border-color var(--duration-fast) var(--ease-standard),
+                           box-shadow var(--duration-fast) var(--ease-standard)`,
+            }}
+            onFocus={e => {
+              e.currentTarget.style.borderColor = 'var(--color-brand)'
+              e.currentTarget.style.boxShadow = '0 0 0 3px oklch(55% 0.16 34 / 0.15)'
+            }}
+            onBlur={e => {
+              e.currentTarget.style.borderColor = 'var(--color-border)'
+              e.currentTarget.style.boxShadow = 'none'
+            }}
           />
         </section>
 
+        {/* Recipe list */}
         {isLoading ? (
-          <p>Warming the hearth...</p>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {recipes?.map((recipe: any) => (
-              <Link key={recipe.id} href={`/recipe/${recipe.id}`}>
-                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 cursor-pointer hover:shadow-md transition">
-                  <h2 className="text-lg font-semibold">{recipe.title}</h2>
-                  {recipe.original_yield && <p className="text-sm text-gray-500 mt-1">Yields {recipe.original_yield}</p>}
-                </div>
-              </Link>
+          <div style={{ columns: '1', gap: '20px' }} className="sm:columns-2 lg:columns-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <SkeletonCard key={i} />
             ))}
+          </div>
+        ) : !recipes || recipes.length === 0 ? (
+          /* Empty state */
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              padding: '64px 24px',
+              textAlign: 'center',
+            }}
+          >
+            <div
+              style={{
+                width: '72px',
+                height: '72px',
+                borderRadius: 'var(--radius-lg)',
+                background: 'var(--color-brand-muted)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: '20px',
+              }}
+            >
+              <BookOpen size={32} style={{ color: 'var(--color-brand)' }} strokeWidth={1.5} />
+            </div>
+            <h2
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: '22px',
+                fontWeight: 600,
+                color: 'var(--color-ink)',
+                marginBottom: '8px',
+              }}
+            >
+              Your hearth is waiting
+            </h2>
+            <p
+              style={{
+                fontSize: '15px',
+                color: 'var(--color-ink-secondary)',
+                maxWidth: '320px',
+                lineHeight: 1.6,
+                marginBottom: '20px',
+              }}
+            >
+              Add your first recipe — by hand, from a URL, or by scanning a recipe card.
+            </p>
+            <button
+              onClick={() => setIsAddModalOpen(true)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '14px',
+                fontWeight: 500,
+                color: 'var(--color-brand)',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '8px 12px',
+                borderRadius: 'var(--radius-md)',
+                transition: `background var(--duration-fast) var(--ease-standard)`,
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-brand-muted)' }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'none' }}
+            >
+              <Plus size={16} /> Add your first recipe
+            </button>
+          </div>
+        ) : (
+          /* Masonry columns */
+          <div style={{ columns: '1', gap: '20px' }} className="sm:columns-2 lg:columns-3">
+            {recipes.map((recipe: any) => {
+              const titleSize = recipe.title?.length <= 30 ? '20px' : '18px'
+              const totalTime =
+                (recipe.prep_time || 0) + (recipe.cook_time || 0)
 
-             {(!recipes || recipes.length === 0) && (
-              <div className="col-span-full text-center py-12 text-gray-400">
-                <p>No recipes yet. Tap + to add to the hearth.</p>
-              </div>
-            )}
+              return (
+                <Link
+                  key={recipe.id}
+                  href={`/recipe/${recipe.id}`}
+                  style={{ textDecoration: 'none', display: 'block' }}
+                >
+                  <div
+                    style={{
+                      background: 'var(--color-surface-raised)',
+                      border: '1px solid var(--color-border-subtle)',
+                      borderRadius: 'var(--radius-xl)',
+                      overflow: 'hidden',
+                      boxShadow: 'var(--shadow-sm)',
+                      marginBottom: '16px',
+                      breakInside: 'avoid',
+                      cursor: 'pointer',
+                      transition: `box-shadow var(--duration-base) var(--ease-standard),
+                                   border-color var(--duration-base) var(--ease-standard),
+                                   transform var(--duration-base) var(--ease-standard)`,
+                    }}
+                    onMouseEnter={e => {
+                      const el = e.currentTarget
+                      el.style.boxShadow = 'var(--shadow-md)'
+                      el.style.borderColor = 'var(--color-border)'
+                      el.style.transform = 'translateY(-1px)'
+                    }}
+                    onMouseLeave={e => {
+                      const el = e.currentTarget
+                      el.style.boxShadow = 'var(--shadow-sm)'
+                      el.style.borderColor = 'var(--color-border-subtle)'
+                      el.style.transform = 'translateY(0)'
+                    }}
+                  >
+                    {recipe.cover_image && (
+                      <img
+                        src={recipe.cover_image}
+                        alt={recipe.title}
+                        style={{
+                          display: 'block',
+                          width: '100%',
+                          height: '160px',
+                          objectFit: 'cover',
+                        }}
+                      />
+                    )}
+                    <div style={{ padding: '20px 20px 16px' }}>
+                      <h2
+                        style={{
+                          fontFamily: 'var(--font-display)',
+                          fontSize: titleSize,
+                          fontWeight: 600,
+                          color: 'var(--color-ink)',
+                          letterSpacing: 'var(--tracking-snug)',
+                          lineHeight: 1.3,
+                          margin: 0,
+                        }}
+                      >
+                        {recipe.title}
+                      </h2>
+
+                      {recipe.description && (
+                        <p
+                          style={{
+                            fontSize: '14px',
+                            color: 'var(--color-ink-secondary)',
+                            marginTop: '6px',
+                            lineHeight: 1.55,
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical' as const,
+                            overflow: 'hidden',
+                          }}
+                        >
+                          {recipe.description}
+                        </p>
+                      )}
+
+                      {/* Footer row */}
+                      {(recipe.original_yield || totalTime > 0 || recipe.tags?.length > 0) && (
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '10px',
+                            flexWrap: 'wrap',
+                            marginTop: '12px',
+                          }}
+                        >
+                          {recipe.original_yield && (
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                fontSize: '13px',
+                                color: 'var(--color-ink-muted)',
+                              }}
+                            >
+                              <Users size={12} style={{ color: 'var(--color-sage)' }} />
+                              {recipe.original_yield}
+                            </span>
+                          )}
+                          {totalTime > 0 && (
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                fontSize: '13px',
+                                color: 'var(--color-ink-muted)',
+                              }}
+                            >
+                              <Clock size={12} />
+                              {totalTime} min
+                            </span>
+                          )}
+                          {recipe.tags?.[0] && (
+                            <span
+                              style={{
+                                fontSize: '11px',
+                                fontWeight: 500,
+                                color: 'var(--color-sage-text)',
+                                background: 'var(--color-sage-muted)',
+                                borderRadius: 'var(--radius-pill)',
+                                padding: '2px 8px',
+                                letterSpacing: 'var(--tracking-label)',
+                                textTransform: 'uppercase',
+                              }}
+                            >
+                              {recipe.tags[0].name}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </Link>
+              )
+            })}
           </div>
         )}
-
-        <button 
-          onClick={() => setIsAddModalOpen(true)}
-          className="fixed bottom-6 right-6 z-30 w-14 h-14 bg-[#CC5500] text-white rounded-full shadow-lg flex items-center justify-center text-3xl hover:bg-[#aa4700] hover:scale-105 transition-all outline-none">
-          +
-        </button>
-
-        <AddRecipeModal 
-          isOpen={isAddModalOpen} 
-          onClose={() => setIsAddModalOpen(false)} 
-        />
       </div>
+
+      {/* FAB */}
+      <button
+        onClick={() => setIsAddModalOpen(true)}
+        style={{
+          position: 'fixed',
+          bottom: '24px',
+          right: '24px',
+          zIndex: 30,
+          width: '56px',
+          height: '56px',
+          borderRadius: 'var(--radius-pill)',
+          background: 'var(--color-brand)',
+          color: 'white',
+          border: 'none',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxShadow: 'var(--shadow-brand)',
+          transition: `background var(--duration-fast) var(--ease-spring),
+                       box-shadow var(--duration-fast) var(--ease-spring),
+                       transform var(--duration-fast) var(--ease-spring)`,
+          outline: 'none',
+        }}
+        onMouseEnter={e => {
+          e.currentTarget.style.background = 'var(--color-brand-hover)'
+          e.currentTarget.style.boxShadow = '0 6px 24px oklch(55% 0.16 34 / 0.35)'
+          e.currentTarget.style.transform = 'scale(1.05)'
+        }}
+        onMouseLeave={e => {
+          e.currentTarget.style.background = 'var(--color-brand)'
+          e.currentTarget.style.boxShadow = 'var(--shadow-brand)'
+          e.currentTarget.style.transform = 'scale(1)'
+        }}
+        onMouseDown={e => { e.currentTarget.style.transform = 'scale(0.97)' }}
+        onMouseUp={e => { e.currentTarget.style.transform = 'scale(1.05)' }}
+        aria-label="Add recipe"
+      >
+        <Plus size={24} strokeWidth={2} />
+      </button>
+
+      <AddRecipeModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+      />
     </main>
   )
 }
