@@ -1,0 +1,30 @@
+services:
+  backend:
+    build: 
+      context: ./backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data/db:/app/database
+      - ./data/uploads:/app/uploads
+    environment:
+      - OLLAMA_URL=http://host.docker.internal:11434
+      - DB_DIR=/app/database
+      - UPLOAD_DIR=/app/uploads
+      - CORS_ORIGINS=http://localhost:3000,http://frontend:3000
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    build: 
+      context: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      backend:
+        condition: service_healthy
