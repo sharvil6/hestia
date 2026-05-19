@@ -31,6 +31,12 @@
       "expo-router",
       "expo-secure-store"
     ],
+    "updates": {
+      "url": "https://u.expo.dev/96b8d4d7-0c87-4541-8e8d-8bc8b74c1652"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "extra": {
       "router": {},
       "eas": {
