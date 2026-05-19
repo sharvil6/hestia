@@ -1,0 +1,5 @@
+{
+  "name": "hestia",
+  "private": true,
+  "workspaces": ["shared", "frontend"]
+}
