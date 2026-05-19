@@ -5,6 +5,10 @@ data/db/*.db
 data/db/*.db-wal
 data/db/*.db-shm
 data/uploads/
+backend/data/db/*.db
+backend/data/db/*.db-wal
+backend/data/db/*.db-shm
+backend/data/uploads/
 *.log
 
 # Byte-compiled / optimized / DLL files
@@ -188,3 +192,4 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+.claude/settings.local.json

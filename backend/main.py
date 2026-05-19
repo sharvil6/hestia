@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
 import logging
+from dotenv import load_dotenv
+load_dotenv()
 
 # basicConfig is a no-op once uvicorn has configured the root logger,
 # so we attach a dedicated handler to our own logger hierarchy.
