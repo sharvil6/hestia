@@ -18,6 +18,9 @@ on:
 jobs:
   update:
     runs-on: ubuntu-latest
+    environment: CICD
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
     steps:
       - uses: actions/checkout@v4
@@ -28,12 +31,15 @@ jobs:
           cache: npm
           cache-dependency-path: mobile/package-lock.json
 
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
       - name: Install dependencies
         run: npm install --legacy-peer-deps --no-audit
         working-directory: mobile
 
       - name: Publish EAS Update
-        run: npx eas-cli update --branch preview --message "CI ${{ github.sha }}" --platform ios
+        run: eas update --branch preview --message "CI ${{ github.sha }}" --platform ios
         working-directory: mobile
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
