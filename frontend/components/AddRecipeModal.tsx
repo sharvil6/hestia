@@ -23,6 +23,10 @@ interface InstructionStep {
   image_path?: string;
 }
 
+interface RawIngredient { qty?: number; unit?: string; item?: string; note?: string }
+interface RawInstruction { text?: string }
+interface ApiError { response?: { data?: { detail?: string } } }
+
 type TabMode = 'manual' | 'url' | 'photo';
 type UrlStep = 'input' | 'loading' | 'error' | 'editing';
 type PhotoStep = 'upload' | 'loading' | 'error' | 'editing';
@@ -69,8 +73,10 @@ export default function AddRecipeModal({ isOpen, onClose }: AddRecipeModalProps)
   // Handle animation states
   useEffect(() => {
     if (isOpen) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing render state with animation timing
       setIsRendered(true);
-      setTimeout(() => setIsVisible(true), 10);
+      const t = setTimeout(() => setIsVisible(true), 10);
+      return () => clearTimeout(t);
     } else {
       setIsVisible(false);
       const timer = setTimeout(() => setIsRendered(false), 300);
@@ -141,7 +147,7 @@ export default function AddRecipeModal({ isOpen, onClose }: AddRecipeModalProps)
       setPrepTime(data.prep_time || '');
       setCookTime(data.cook_time || '');
       setImportedUrl('');
-      const ingList: ParsedIngredient[] = (data.ingredients || []).map((ing: any) => ({
+      const ingList: ParsedIngredient[] = (data.ingredients || []).map((ing: RawIngredient) => ({
         raw: `${ing.qty} ${ing.unit} ${ing.item}`.trim(),
         qty: ing.qty ?? 1,
         unit: ing.unit ?? '',
@@ -149,11 +155,11 @@ export default function AddRecipeModal({ isOpen, onClose }: AddRecipeModalProps)
         note: ing.note ?? '',
       }));
       setIngredients(ingList);
-      const stepList: InstructionStep[] = (data.instructions || []).map((inst: any) => ({ text: inst.text || '' }));
+      const stepList: InstructionStep[] = (data.instructions || []).map((inst: RawInstruction) => ({ text: inst.text || '' }));
       setInstructions(stepList);
       setPhotoStep('editing');
-    } catch (err: any) {
-      const msg = err?.response?.data?.detail || 'Could not extract a recipe from that photo. Try a clearer image.';
+    } catch (err) {
+      const msg = (err as ApiError)?.response?.data?.detail || 'Could not extract a recipe from that photo. Try a clearer image.';
       setPhotoError(msg);
       setPhotoStep('error');
     }
@@ -229,7 +235,7 @@ export default function AddRecipeModal({ isOpen, onClose }: AddRecipeModalProps)
       setImportedUrl(url);
 
       // Map scraped ingredients — they come back as { qty, unit, item, note }
-      const ingList: ParsedIngredient[] = (data.ingredients || []).map((ing: any) => ({
+      const ingList: ParsedIngredient[] = (data.ingredients || []).map((ing: RawIngredient) => ({
         raw: `${ing.qty} ${ing.unit} ${ing.item}`.trim(),
         qty: ing.qty ?? 1,
         unit: ing.unit ?? '',
@@ -239,12 +245,12 @@ export default function AddRecipeModal({ isOpen, onClose }: AddRecipeModalProps)
       setIngredients(ingList);
 
       // Map scraped instructions
-      const stepList: InstructionStep[] = (data.instructions || []).map((inst: any) => ({ text: inst.text || '' }));
+      const stepList: InstructionStep[] = (data.instructions || []).map((inst: RawInstruction) => ({ text: inst.text || '' }));
       setInstructions(stepList);
 
       setUrlStep('editing');
-    } catch (err: any) {
-      const msg = err?.response?.data?.detail || 'Could not parse a recipe from that URL. Try a different link.';
+    } catch (err) {
+      const msg = (err as ApiError)?.response?.data?.detail || 'Could not parse a recipe from that URL. Try a different link.';
       setUrlError(msg);
       setUrlStep('error');
     }
@@ -257,10 +263,10 @@ export default function AddRecipeModal({ isOpen, onClose }: AddRecipeModalProps)
     }
 
     setIsUploading(true);
-    let finalInstructions = [];
+    const finalInstructions = [];
     try {
       for (let i = 0; i < instructions.length; i++) {
-        let step = instructions[i];
+        const step = instructions[i];
         let image_path = step.image_path;
         if (step.image) {
           const res = await uploadRecipeImage(step.image);

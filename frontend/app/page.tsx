@@ -1,8 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getRecipes } from '@/lib/api'
+import { useCurrentUserId } from '@/lib/currentUser'
+import type { Recipe } from '@hestia/shared/types'
 import Link from 'next/link'
 import AddRecipeModal from '@/components/AddRecipeModal'
 import {
@@ -45,14 +47,9 @@ function SkeletonCard() {
 
 export default function Home() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const currentUserId = useCurrentUserId()
 
-  useEffect(() => {
-    const cookie = document.cookie.split('; ').find(r => r.startsWith('hestia_user='))
-    if (cookie) setCurrentUserId(cookie.split('=')[1])
-  }, [])
-
-  const { data: recipes, isLoading } = useQuery({
+  const { data: recipes, isLoading } = useQuery<Recipe[]>({
     queryKey: ['recipes'],
     queryFn: getRecipes,
   })
@@ -247,7 +244,7 @@ export default function Home() {
         ) : (
           /* Masonry columns */
           <div style={{ columns: '1', gap: '20px' }} className="sm:columns-2 lg:columns-3">
-            {recipes.map((recipe: any) => {
+            {recipes.map((recipe) => {
               const titleSize = recipe.title?.length <= 30 ? '20px' : '18px'
               const totalTime =
                 (recipe.prep_time || 0) + (recipe.cook_time || 0)

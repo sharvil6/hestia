@@ -2,6 +2,20 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, Plus, Trash2, Clock, Users, BookOpen, PenLine, Loader2, Image as ImageIcon } from 'lucide-react';
 import { updateRecipe, uploadRecipeImage } from '@/lib/api';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import type { Recipe, Ingredient, Instruction } from '@hestia/shared/types';
+
+type RecipeUpdatePayload = {
+  title: string;
+  description: string | null;
+  original_yield: number | '' | null;
+  prep_time: number | '' | null;
+  cook_time: number | '' | null;
+  source_url: string | null | undefined;
+  cover_image: string | null | undefined;
+  tags: string[];
+  ingredients: { qty: number; unit: string; item: string; note: string }[];
+  instructions: Instruction[];
+};
 
 interface ParsedIngredient {
   raw: string;
@@ -21,7 +35,7 @@ interface InstructionStep {
 interface EditRecipeModalProps {
   isOpen: boolean;
   onClose: () => void;
-  recipe: any;
+  recipe: Recipe | null | undefined;
 }
 
 export default function EditRecipeModal({ isOpen, onClose, recipe }: EditRecipeModalProps) {
@@ -54,13 +68,14 @@ export default function EditRecipeModal({ isOpen, onClose, recipe }: EditRecipeM
 
   useEffect(() => {
     if (recipe) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing editable form state with newly-loaded recipe prop
       setTitle(recipe.title || '');
       setDescription(recipe.description || '');
       setYieldAmount(recipe.original_yield || '');
       setPrepTime(recipe.prep_time || '');
       setCookTime(recipe.cook_time || '');
-      
-      const initialIngredients = recipe.ingredients?.map((ing: any) => ({
+
+      const initialIngredients = recipe.ingredients?.map((ing: Ingredient) => ({
         raw: `${ing.qty} ${ing.unit} ${ing.item}`.trim(),
         qty: ing.qty || 0,
         unit: ing.unit || '',
@@ -69,7 +84,7 @@ export default function EditRecipeModal({ isOpen, onClose, recipe }: EditRecipeM
       })) || [];
       setIngredients(initialIngredients);
 
-      const initialInstructions = recipe.instructions?.map((inst: any) => ({
+      const initialInstructions = recipe.instructions?.map((inst: Instruction) => ({
         text: inst.text || '',
         image_path: inst.image_path,
         imagePreviewUrl: inst.image_path ? `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}${inst.image_path}` : undefined
@@ -81,8 +96,10 @@ export default function EditRecipeModal({ isOpen, onClose, recipe }: EditRecipeM
   // Handle animation states
   useEffect(() => {
     if (isOpen) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing render state with animation timing
       setIsRendered(true);
-      setTimeout(() => setIsVisible(true), 10);
+      const t = setTimeout(() => setIsVisible(true), 10);
+      return () => clearTimeout(t);
     } else {
       setIsVisible(false);
       const timer = setTimeout(() => setIsRendered(false), 300);
@@ -91,9 +108,9 @@ export default function EditRecipeModal({ isOpen, onClose, recipe }: EditRecipeM
   }, [isOpen]);
 
   const mutation = useMutation({
-    mutationFn: (data: any) => updateRecipe(recipe.id, data),
+    mutationFn: (data: RecipeUpdatePayload) => updateRecipe(recipe!.id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['recipe', recipe.id] });
+      queryClient.invalidateQueries({ queryKey: ['recipe', recipe!.id] });
       queryClient.invalidateQueries({ queryKey: ['recipes'] });
       onClose();
     },
@@ -167,10 +184,10 @@ export default function EditRecipeModal({ isOpen, onClose, recipe }: EditRecipeM
     }
 
     setIsUploading(true);
-    let finalInstructions = [];
+    const finalInstructions: Instruction[] = [];
     try {
       for (let i = 0; i < instructions.length; i++) {
-        let step = instructions[i];
+        const step = instructions[i];
         let image_path = step.image_path;
         if (step.image) {
           const res = await uploadRecipeImage(step.image);
@@ -194,7 +211,7 @@ export default function EditRecipeModal({ isOpen, onClose, recipe }: EditRecipeM
       cook_time: cookTime || null,
       source_url: recipe?.source_url || null,
       cover_image: recipe?.cover_image || null,
-      tags: recipe?.tags?.map((t: any) => t.name) || [],
+      tags: recipe?.tags?.map((t) => t.name) || [],
       ingredients: ingredients.map(ing => ({
         qty: ing.qty,
         unit: ing.unit,
