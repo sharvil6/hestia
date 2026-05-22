@@ -3,8 +3,9 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { getRecipe, addRecipeAnnotation, updateRecipeAnnotation, deleteRecipeAnnotation } from '@/lib/api'
+import { useCurrentUserId } from '@/lib/currentUser'
 import {
   ChevronLeft,
   Image as ImageIcon,
@@ -80,16 +81,11 @@ export default function RecipeDetail() {
   const [noteImage, setNoteImage]         = useState<File | null>(null)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [checkedIngredients, setCheckedIngredients] = useState<Set<number>>(new Set())
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const currentUserId = useCurrentUserId()
   const [editingAnnId, setEditingAnnId]   = useState<string | null>(null)
   const [editNoteContent, setEditNoteContent] = useState('')
   const [editNoteImage, setEditNoteImage] = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    const cookie = document.cookie.split('; ').find(r => r.startsWith('hestia_user='))
-    if (cookie) setCurrentUserId(cookie.split('=')[1])
-  }, [])
 
   const { data: recipe, isLoading, error } = useQuery<Recipe>({
     queryKey: ['recipe', recipeId],

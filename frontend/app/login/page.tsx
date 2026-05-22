@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { Flame } from 'lucide-react'
+import { setCurrentUserCookie } from '@/lib/currentUser'
 
 const FAMILY_MEMBERS = [
   {
@@ -28,7 +29,7 @@ export default function Login() {
   const router = useRouter()
 
   const handleLogin = (id: string) => {
-    document.cookie = `hestia_user=${id}; path=/; max-age=31536000`
+    setCurrentUserCookie(id)
     router.push('/')
   }
 

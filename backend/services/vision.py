@@ -17,7 +17,7 @@ _MODEL = "gemini-2.0-flash-lite"
 client = None
 if os.environ.get("GEMINI_API_KEY"):
     genai_client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
-    client = instructor.from_genai(client=genai_client, mode=instructor.Mode.GENAI_JSON)
+    client = instructor.from_genai(client=genai_client, mode=instructor.Mode.GENAI_STRUCTURED_OUTPUTS)
     logger.info("Gemini vision client initialised")
 else:
     logger.warning("GEMINI_API_KEY not set — vision extraction will be unavailable")

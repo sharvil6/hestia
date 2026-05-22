@@ -24,6 +24,27 @@
 
 Start both processes (backend first, then frontend). Keep them running until the frontend loads in a browser without errors. Verify the golden paths (add recipe, scrape URL, upload image) before reporting the task done.
 
+## Quick verification (`verify.ps1`)
+
+Use `verify.ps1` at the project root to quickly confirm your changes haven't broken the dev servers. It reuses any server already listening on the port and only cold-starts what's missing, so re-runs are near-instant.
+
+```
+.\verify.ps1                # backend + frontend  (default)
+.\verify.ps1 -Backend       # backend only
+.\verify.ps1 -Mobile        # also start + check the Expo/Metro bundler
+.\verify.ps1 -All           # backend + frontend + mobile
+.\verify.ps1 -Stop          # kill servers this script previously started
+```
+
+What it checks:
+- **backend** — `GET /` returns a JSON object with `status`, and `GET /recipes/` returns 200.
+- **frontend** — `GET http://127.0.0.1:3000/` returns 200.
+- **mobile** — Metro's `/status` reports `packager-status:running`.
+
+Tracked PIDs are written to `.verify-pids.json`; use `-Stop` to tear them down. Servers it didn't start (already running) are left alone. Exit code is 0 on pass, 1 on any failure — safe to chain with `; if ($?) { ... }`.
+
+Run this after edits as a fast smoke test instead of starting servers by hand. It is NOT a substitute for exercising golden paths in the browser when you change UI.
+
 ## Shared code
 
 TypeScript types and the API client live in `shared/`, published as the `@hestia/shared` npm workspace package.
