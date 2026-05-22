@@ -14,6 +14,7 @@ on:
       - 'mobile/**'
       - 'shared/**'
       - '.github/workflows/mobile-preview.yml'
+  workflow_dispatch:
 
 jobs:
   update:
