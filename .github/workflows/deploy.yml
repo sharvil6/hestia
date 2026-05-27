@@ -1,0 +1,47 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Avoid stacking deploys if pushes land close together.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - name: Build (as hestia user)
+        run: sudo -n -u hestia /bin/bash /srv/hestia/repo/deploy/deploy.sh
+
+      - name: Restart services
+        run: |
+          sudo -n /usr/bin/systemctl restart hestia-backend.service
+          sudo -n /usr/bin/systemctl restart hestia-frontend.service
+
+      - name: Backend health check
+        run: |
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null; then
+              echo "backend OK"; exit 0
+            fi
+            sleep 2
+          done
+          echo "Backend failed to become healthy within 60s" >&2
+          sudo -n /usr/bin/journalctl -u hestia-backend.service -n 50 --no-pager >&2
+          exit 1
+
+      - name: Frontend health check
+        run: |
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:3000/ >/dev/null; then
+              echo "frontend OK"; exit 0
+            fi
+            sleep 2
+          done
+          echo "Frontend failed to become healthy within 60s" >&2
+          sudo -n /usr/bin/journalctl -u hestia-frontend.service -n 50 --no-pager >&2
+          exit 1

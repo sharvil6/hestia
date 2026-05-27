@@ -1,15 +1,19 @@
-import * as SecureStore from 'expo-secure-store';
-
-const KEY = 'hestia_user_id';
+/**
+ * Back-compat shim. The user id now lives inside the auth session.
+ * New code should import from ./auth directly.
+ */
+import { getStoredUser, clearSession } from './auth';
 
 export async function getUserId(): Promise<string | null> {
-  return SecureStore.getItemAsync(KEY);
+  const u = await getStoredUser();
+  return u?.id ?? null;
 }
 
-export async function setUserId(id: string): Promise<void> {
-  return SecureStore.setItemAsync(KEY, id);
+/** No-op: kept so older imports don't crash. The id is now derived from the session. */
+export async function setUserId(_id: string): Promise<void> {
+  // intentional no-op
 }
 
 export async function clearUserId(): Promise<void> {
-  return SecureStore.deleteItemAsync(KEY);
+  await clearSession();
 }

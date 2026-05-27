@@ -23,22 +23,27 @@ _hestia_logger.propagate = False  # avoid double-printing via uvicorn root
 
 logger = _hestia_logger
 
-from database import engine
+from database import engine, ensure_schema_upgrades
 from models import Base
 
-# Create all tables on startup
+# Create all tables on startup, then apply in-place column additions.
 Base.metadata.create_all(bind=engine)
+ensure_schema_upgrades()
 
 from database import SessionLocal
 from models import User
 
+# Legacy hardcoded family-member seed. Replaced by the invite-code flow.
+# Set HESTIA_SEED_LEGACY_USERS=1 only for local dev against pre-auth fixtures.
 def seed_users():
+    if os.environ.get("HESTIA_SEED_LEGACY_USERS", "").lower() not in {"1", "true", "yes"}:
+        return
     db = SessionLocal()
     try:
         users = [
             User(id="1", display_name="Mom"),
             User(id="2", display_name="Dad"),
-            User(id="3", display_name="Kids")
+            User(id="3", display_name="Kids"),
         ]
         for u in users:
             existing = db.query(User).filter(User.id == u.id).first()
@@ -77,10 +82,17 @@ logger.info("Upload directory: %s", UPLOAD_DIR)
 # Mount static files for images
 app.mount("/images", StaticFiles(directory=UPLOAD_DIR), name="images")
 
-from routers import recipes
+from routers import recipes, auth
+app.include_router(auth.router)
 app.include_router(recipes.router)
 
 @app.get("/")
 def read_root():
     logger.debug("Health check endpoint called")
     return {"status": "ok", "message": "Hestia API is running"}
+
+
+@app.get("/health")
+def health():
+    """Unauthenticated liveness probe for verify.ps1 and uptime checks."""
+    return {"status": "ok"}

@@ -111,26 +111,51 @@ function Verify-Backend {
         return @{ name='backend'; ok=$false; ms=$sw.ElapsedMilliseconds }
     }
 
+    # Public checks: root + /health. /recipes/ now requires auth and 401s without a
+    # session cookie — we verify that 401 separately to confirm the gate is wired.
     $checks = @(
-        @{ url = "$base/";          expectKey = 'status' },
-        @{ url = "$base/recipes/";  expectKey = $null   }   # should return JSON array
+        @{ url = "$base/";         expectKey = 'status'; expectCode = 200 },
+        @{ url = "$base/health";   expectKey = 'status'; expectCode = 200 },
+        @{ url = "$base/recipes/"; expectKey = $null;   expectCode = 401 }
     )
     $ok = $true
     foreach ($c in $checks) {
+        $status = $null
+        $content = $null
         try {
             $r = Invoke-WebRequest -Uri $c.url -UseBasicParsing -TimeoutSec 5
-            if ($r.StatusCode -ne 200) { $ok = $false; Write-Host "  [FAIL] $($r.StatusCode) $($c.url)" -ForegroundColor Red; continue }
-            if ($c.expectKey) {
-                $json = $r.Content | ConvertFrom-Json
-                if (-not ($json.PSObject.Properties.Name -contains $c.expectKey)) {
-                    $ok = $false; Write-Host "  [FAIL] $($c.url) missing key '$($c.expectKey)'" -ForegroundColor Red; continue
-                }
-            }
-            Write-Host "  [OK]   200 $($c.url)" -ForegroundColor Green
+            $status = [int]$r.StatusCode
+            $content = $r.Content
         } catch {
-            $ok = $false
-            Write-Host "  [FAIL] $($c.url) -- $($_.Exception.Message)" -ForegroundColor Red
+            # PS 5.1: non-2xx throws. Pull the real status code off the exception.
+            if ($_.Exception.Response) {
+                $status = [int]$_.Exception.Response.StatusCode
+            } else {
+                $ok = $false
+                Write-Host "  [FAIL] $($c.url) -- $($_.Exception.Message)" -ForegroundColor Red
+                continue
+            }
         }
+        if ($status -ne $c.expectCode) {
+            $ok = $false
+            Write-Host "  [FAIL] expected $($c.expectCode) got $status  $($c.url)" -ForegroundColor Red
+            continue
+        }
+        if ($c.expectKey -and $content) {
+            try {
+                $json = $content | ConvertFrom-Json
+                if (-not ($json.PSObject.Properties.Name -contains $c.expectKey)) {
+                    $ok = $false
+                    Write-Host "  [FAIL] $($c.url) missing key '$($c.expectKey)'" -ForegroundColor Red
+                    continue
+                }
+            } catch {
+                $ok = $false
+                Write-Host "  [FAIL] $($c.url) -- bad JSON" -ForegroundColor Red
+                continue
+            }
+        }
+        Write-Host "  [OK]   $status $($c.url)" -ForegroundColor Green
     }
     $sw.Stop()
     $tag = if ($ok) { 'PASS' } else { 'FAIL' }
@@ -199,13 +224,18 @@ function Verify-Mobile {
         Write-Host "[mobile] reusing metro on :$port"
     }
 
-    # Metro responds at /status with the literal text "packager-status:running"
+    # Metro responds at /status with the literal text "packager-status:running".
+    # In PS 5.1 -UseBasicParsing returns Content as byte[] when there is no text/*
+    # Content-Type, which makes -match silently miss. Decode explicitly.
     $deadline = (Get-Date).AddSeconds([Math]::Max($TimeoutSec, 60))
     $ok = $false
     while ((Get-Date) -lt $deadline) {
         try {
             $r = Invoke-WebRequest -Uri "$base/status" -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop
-            if ($r.Content -match 'packager-status:running') { $ok = $true; break }
+            $body = if ($r.Content -is [byte[]]) {
+                [System.Text.Encoding]::UTF8.GetString($r.Content)
+            } else { [string]$r.Content }
+            if ($body -match 'packager-status:running') { $ok = $true; break }
         } catch {}
         Start-Sleep -Milliseconds 200
     }

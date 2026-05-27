@@ -30,3 +30,21 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def ensure_schema_upgrades():
+    """In-place schema fixups for columns added after a table was first created.
+
+    SQLite's ALTER TABLE ADD COLUMN handles the simple cases (Base.metadata.create_all
+    is a no-op on pre-existing tables, so it cannot add new columns by itself).
+    Keep this list minimal — for anything beyond an additive column, use a real
+    migration tool.
+    """
+    from sqlalchemy import inspect, text
+    inspector = inspect(engine)
+    table_names = set(inspector.get_table_names())
+    with engine.begin() as conn:
+        if "users" in table_names:
+            cols = {c["name"] for c in inspector.get_columns("users")}
+            if "is_admin" not in cols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN is_admin BOOLEAN NOT NULL DEFAULT 0"))

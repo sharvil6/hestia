@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, TextInput,
   ActivityIndicator, RefreshControl,
@@ -7,6 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, useRouter, useNavigation } from 'expo-router';
 import { useLayoutEffect } from 'react';
 import { getRecipes, searchRecipes } from '../lib/api';
+import { getCachedToken } from '../lib/auth';
 import type { Recipe } from '@hestia/shared/types';
 
 export default function Home() {
@@ -14,11 +15,17 @@ export default function Home() {
   const navigation = useNavigation();
   const [search, setSearch] = useState('');
 
+  // Boot guard: if we have no session token, route straight to /login so the
+  // first /recipes/ call doesn't 401.
+  useEffect(() => {
+    if (!getCachedToken()) router.replace('/login');
+  }, [router]);
+
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
-        <TouchableOpacity onPress={() => router.push('/login')} className="mr-2">
-          <Text className="text-ember font-medium text-sm">Family</Text>
+        <TouchableOpacity onPress={() => router.push('/settings/security')} className="mr-2">
+          <Text className="text-ember font-medium text-sm">Account</Text>
         </TouchableOpacity>
       ),
     });
@@ -27,6 +34,7 @@ export default function Home() {
   const { data: recipes, isLoading, refetch, isFetching } = useQuery<Recipe[]>({
     queryKey: search.trim() ? ['recipes', 'search', search] : ['recipes'],
     queryFn: () => (search.trim() ? searchRecipes(search) : getRecipes()),
+    enabled: !!getCachedToken(),
   });
 
   const handleSearch = useCallback((text: string) => {
