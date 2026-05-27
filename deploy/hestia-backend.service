@@ -1,0 +1,27 @@
+[Unit]
+Description=Hestia FastAPI backend
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=hestia
+Group=hestia
+WorkingDirectory=/srv/hestia/repo/backend
+EnvironmentFile=/srv/hestia/.env
+Environment=DB_DIR=/srv/hestia/data/db
+Environment=UPLOAD_DIR=/srv/hestia/data/uploads
+Environment=CORS_ORIGINS=https://hestia.sharvilpatel.dev
+ExecStart=/srv/hestia/repo/backend/.venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=5
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/srv/hestia/data
+
+[Install]
+WantedBy=multi-user.target

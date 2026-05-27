@@ -1,10 +1,12 @@
 import { configureApi, apiFetch } from '@hestia/shared/lib/api';
+import { getCachedToken } from './auth';
 
 export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
 configureApi({
   baseUrl: API_BASE_URL,
   devMode: __DEV__,
+  getAuthToken: () => getCachedToken(),
 });
 
 if (__DEV__) {

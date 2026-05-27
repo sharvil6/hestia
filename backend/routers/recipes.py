@@ -8,25 +8,26 @@ import uuid
 import shutil
 import models, schemas
 from database import get_db
+from auth.deps import get_current_user
 
 logger = logging.getLogger("hestia.recipes")
 
 router = APIRouter(prefix="/recipes", tags=["Recipes"])
 
 @router.get("/", response_model=List[schemas.RecipeResponse])
-def read_recipes(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+def read_recipes(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), _user=Depends(get_current_user)):
     recipes = db.query(models.Recipe).offset(skip).limit(limit).all()
     return recipes
 
 @router.get("/{recipe_id}", response_model=schemas.RecipeResponse)
-def read_recipe(recipe_id: str, db: Session = Depends(get_db)):
+def read_recipe(recipe_id: str, db: Session = Depends(get_db), _user=Depends(get_current_user)):
     recipe = db.query(models.Recipe).filter(models.Recipe.id == recipe_id).first()
     if recipe is None:
         raise HTTPException(status_code=404, detail="Recipe not found")
     return recipe
 
 @router.post("/", response_model=schemas.RecipeResponse)
-def create_recipe(recipe: schemas.RecipeCreate, db: Session = Depends(get_db)):
+def create_recipe(recipe: schemas.RecipeCreate, db: Session = Depends(get_db), _user=Depends(get_current_user)):
     db_recipe = models.Recipe(
         title=recipe.title,
         description=recipe.description,
@@ -56,7 +57,7 @@ def create_recipe(recipe: schemas.RecipeCreate, db: Session = Depends(get_db)):
     return db_recipe
 
 @router.delete("/{recipe_id}")
-def delete_recipe(recipe_id: str, db: Session = Depends(get_db)):
+def delete_recipe(recipe_id: str, db: Session = Depends(get_db), _user=Depends(get_current_user)):
     recipe = db.query(models.Recipe).filter(models.Recipe.id == recipe_id).first()
     if recipe is None:
         raise HTTPException(status_code=404, detail="Recipe not found")
@@ -65,7 +66,7 @@ def delete_recipe(recipe_id: str, db: Session = Depends(get_db)):
     return {"ok": True}
 
 @router.put("/{recipe_id}", response_model=schemas.RecipeResponse)
-def update_recipe(recipe_id: str, recipe: schemas.RecipeCreate, db: Session = Depends(get_db)):
+def update_recipe(recipe_id: str, recipe: schemas.RecipeCreate, db: Session = Depends(get_db), _user=Depends(get_current_user)):
     db_recipe = db.query(models.Recipe).filter(models.Recipe.id == recipe_id).first()
     if db_recipe is None:
         raise HTTPException(status_code=404, detail="Recipe not found")
@@ -107,7 +108,7 @@ except ImportError:
     NoSchemaFoundInWildMode = Exception
 
 @router.post("/scrape/preview", response_model=schemas.RecipeCreate)
-def preview_scrape(url: str = Form(...)):
+def preview_scrape(url: str = Form(...), _user=Depends(get_current_user)):
     """Scrape a URL and return the parsed recipe for client-side review, without saving."""
     logger.info("Preview scrape requested for URL: %s", url)
     try:
@@ -125,7 +126,7 @@ def preview_scrape(url: str = Form(...)):
         raise HTTPException(status_code=422, detail=f"Failed to scrape recipe: {str(e)}")
 
 @router.post("/ingest/url", response_model=schemas.RecipeResponse)
-def ingest_from_scraper(url: str = Form(...), db: Session = Depends(get_db)):
+def ingest_from_scraper(url: str = Form(...), db: Session = Depends(get_db), _user=Depends(get_current_user)):
     logger.info("Ingest from URL requested: %s", url)
     try:
         recipe_schema = scrape_recipe_from_url(url)
@@ -142,7 +143,7 @@ def ingest_from_scraper(url: str = Form(...), db: Session = Depends(get_db)):
         raise HTTPException(status_code=422, detail=f"Failed to scrape recipe: {str(e)}")
 
 @router.post("/vision/preview", response_model=schemas.RecipeCreate)
-async def preview_vision(file: UploadFile = File(...)):
+async def preview_vision(file: UploadFile = File(...), _user=Depends(get_current_user)):
     """Extract a recipe from an image and return it for client-side review, without saving."""
     logger.info("Vision preview requested for file: %s (%s)", file.filename, file.content_type)
     try:
@@ -155,13 +156,13 @@ async def preview_vision(file: UploadFile = File(...)):
         raise HTTPException(status_code=422, detail=f"Failed to extract recipe from image: {str(e)}")
 
 @router.post("/ingest/image", response_model=schemas.RecipeResponse)
-async def ingest_from_vision(file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def ingest_from_vision(file: UploadFile = File(...), db: Session = Depends(get_db), _user=Depends(get_current_user)):
     contents = await file.read()
     recipe_schema = extract_recipe_from_image(contents)
     return create_recipe(recipe_schema, db)
 
 @router.get("/search/fts", response_model=List[schemas.RecipeResponse])
-def search_recipes(q: str, db: Session = Depends(get_db)):
+def search_recipes(q: str, db: Session = Depends(get_db), _user=Depends(get_current_user)):
     recipes = db.query(models.Recipe).filter(
         models.Recipe.title.ilike(f"%{q}%") | models.Recipe.description.ilike(f"%{q}%")
     ).all()
@@ -177,7 +178,8 @@ from typing import Optional
 
 @router.post("/upload-image")
 def upload_recipe_image(
-    image: UploadFile = File(...)
+    image: UploadFile = File(...),
+    _user=Depends(get_current_user),
 ):
     if not image or not image.filename:
         raise HTTPException(status_code=400, detail="No image file provided")
@@ -197,7 +199,8 @@ def add_recipe_annotation(
     step_index: Optional[int] = Form(None),
     image: Optional[UploadFile] = File(None),
     user_id: Optional[str] = Form(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     recipe = db.query(models.Recipe).filter(models.Recipe.id == recipe_id).first()
     if recipe is None:
@@ -214,7 +217,7 @@ def add_recipe_annotation(
         
     db_annotation = models.Annotation(
         recipe_id=recipe_id,
-        user_id=user_id,
+        user_id=user_id or current_user.id,
         step_index=step_index,
         content=content,
         image_path=image_path
@@ -230,7 +233,8 @@ def update_recipe_annotation(
     annotation_id: str,
     content: str = Form(None),
     image: Optional[UploadFile] = File(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _user=Depends(get_current_user),
 ):
     annotation = db.query(models.Annotation).filter(models.Annotation.id == annotation_id).first()
     if annotation is None:
@@ -252,7 +256,7 @@ def update_recipe_annotation(
     return annotation
 
 @router.delete("/annotations/{annotation_id}")
-def delete_recipe_annotation(annotation_id: str, db: Session = Depends(get_db)):
+def delete_recipe_annotation(annotation_id: str, db: Session = Depends(get_db), _user=Depends(get_current_user)):
     annotation = db.query(models.Annotation).filter(models.Annotation.id == annotation_id).first()
     if annotation is None:
         raise HTTPException(status_code=404, detail="Annotation not found")

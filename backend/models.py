@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, Integer, Float, Boolean, ForeignKey, DateTime, TypeDecorator, event
+from sqlalchemy import Column, String, Integer, Float, Boolean, ForeignKey, DateTime, LargeBinary, Index, TypeDecorator, event
 from sqlalchemy.orm import relationship
 from database import Base
 import json
@@ -21,11 +21,90 @@ class JSONEncodedDict(TypeDecorator):
 
 class User(Base):
     __tablename__ = "users"
-    
+
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     display_name = Column(String, nullable=False)
     avatar_id = Column(String, nullable=True)
+    is_admin = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class AuthKey(Base):
+    """The long-lived BIP39 word-key credential for a user.
+
+    Only one row per user has revoked_at IS NULL at a time (the active key).
+    Older rows are kept around for audit / forensics.
+    """
+    __tablename__ = "auth_keys"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    # Public lookup prefix derived from sha256(raw_key)[:8], base32-grouped.
+    # Lets login lookups be O(1) without needing to scan every hash.
+    key_id = Column(String, nullable=False, unique=True, index=True)
+    # Argon2 hash of the raw 16 bytes. The raw bytes are never stored.
+    key_hash = Column(String, nullable=False)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    last_used_at = Column(DateTime, nullable=True)
+    revoked_at = Column(DateTime, nullable=True)
+
+
+class Invite(Base):
+    """One-time enrollment ticket issued by an admin."""
+    __tablename__ = "invites"
+
+    code = Column(String, primary_key=True)
+    intended_display_name = Column(String, nullable=False)
+    created_by_user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    used_at = Column(DateTime, nullable=True)
+    used_by_user_id = Column(String, ForeignKey("users.id"), nullable=True)
+
+
+class Session(Base):
+    """Short-lived per-browser sessions minted from any successful credential check."""
+    __tablename__ = "sessions"
+
+    # Hashed form of the raw session token. The raw token (prefix + secret) is the cookie value.
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    id_prefix = Column(String, nullable=False, unique=True, index=True)
+    id_hash = Column(String, nullable=False)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    auth_method = Column(String, nullable=False)  # "word_key" | "passkey"
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    expires_at = Column(DateTime, nullable=False)
+    last_seen_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    user_agent = Column(String, nullable=True)
+    device_label = Column(String, nullable=True)
+
+
+class Passkey(Base):
+    """A WebAuthn credential bound to a user."""
+    __tablename__ = "passkeys"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    credential_id = Column(LargeBinary, nullable=False, unique=True, index=True)
+    public_key = Column(LargeBinary, nullable=False)
+    sign_count = Column(Integer, nullable=False, default=0)
+    transports = Column(JSONEncodedDict, nullable=True)
+    aaguid = Column(LargeBinary, nullable=True)
+    nickname = Column(String, nullable=False)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    last_used_at = Column(DateTime, nullable=True)
+    revoked_at = Column(DateTime, nullable=True)
+
+
+class WebAuthnChallenge(Base):
+    """Short-TTL ceremony state. Replaces needing Redis for the few-minute challenge window."""
+    __tablename__ = "webauthn_challenges"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    kind = Column(String, nullable=False)  # "register" | "login"
+    challenge = Column(LargeBinary, nullable=False)
+    # For register: the logged-in user attaching a new passkey. For login: None (usernameless).
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    expires_at = Column(DateTime, nullable=False)
 
 class Recipe(Base):
     __tablename__ = "recipes"

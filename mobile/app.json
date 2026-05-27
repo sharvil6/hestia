@@ -14,7 +14,10 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Hestia uses the camera to scan a recovery QR from another signed-in device."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -29,7 +32,13 @@
     },
     "plugins": [
       "expo-router",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Hestia uses the camera to scan a recovery QR from another signed-in device."
+        }
+      ]
     ],
     "updates": {
       "url": "https://u.expo.dev/96b8d4d7-0c87-4541-8e8d-8bc8b74c1652"

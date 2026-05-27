@@ -54,8 +54,49 @@ export interface RecipeCreate {
   tags: string[];
 }
 
-export const FAMILY_MEMBERS: Record<string, { name: string; color: string }> = {
-  '1': { name: 'Mom', color: 'red' },
-  '2': { name: 'Dad', color: 'blue' },
-  '3': { name: 'Kids', color: 'green' },
-};
+// ----- Auth types -------------------------------------------------------------
+
+export interface User {
+  id: string;
+  display_name: string;
+  avatar_id: string | null;
+  is_admin: boolean;
+}
+
+export interface SessionInfo {
+  id_prefix: string;
+  auth_method: 'word_key' | 'passkey';
+  created_at: string;
+  last_seen_at: string;
+  expires_at: string;
+  user_agent: string | null;
+  device_label: string | null;
+  current: boolean;
+}
+
+export interface PasskeyInfo {
+  id: string;
+  nickname: string;
+  created_at: string;
+  last_used_at: string | null;
+}
+
+export interface AdminUserInfo extends User {
+  has_active_key: boolean;
+  passkey_count: number;
+  session_count: number;
+  created_at: string;
+}
+
+export interface InviteCreated {
+  code: string;
+  enroll_url: string;
+  expires_at: string;
+  intended_display_name: string;
+}
+
+export interface EnrollResult {
+  user: User;
+  key_words: string[];
+  key_qr_payload: string;
+}

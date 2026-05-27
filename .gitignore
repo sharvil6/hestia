@@ -193,3 +193,6 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 .claude/settings.local.json
+
+# verify.ps1 dev-server PID tracking (per-machine, never share)
+.verify-pids.json

@@ -1,0 +1,10 @@
+# Grant the GitHub Actions self-hosted runner the minimum sudo it needs.
+# Installed by deploy/install.sh into /etc/sudoers.d/hestia-gh-runner (mode 0440).
+#
+# The runner user MUST be named `gh-runner` for this to apply.
+
+gh-runner ALL=(hestia) NOPASSWD: /bin/bash /srv/hestia/repo/deploy/deploy.sh
+gh-runner ALL=(root)   NOPASSWD: /usr/bin/systemctl restart hestia-backend.service
+gh-runner ALL=(root)   NOPASSWD: /usr/bin/systemctl restart hestia-frontend.service
+gh-runner ALL=(root)   NOPASSWD: /usr/bin/journalctl -u hestia-backend.service *
+gh-runner ALL=(root)   NOPASSWD: /usr/bin/journalctl -u hestia-frontend.service *
