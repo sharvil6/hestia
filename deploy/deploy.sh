@@ -59,7 +59,8 @@ if $frontend_changed || [[ ! -d "$RUNTIME_DIR/frontend" ]]; then
   echo "==> Building frontend"
   npm ci
   # NEXT_PUBLIC_* must be set at build time (Next inlines them into the bundle).
-  NEXT_PUBLIC_API_URL="https://api.hestia.sharvilpatel.dev" npm run build -w frontend
+  # Single-level subdomain — Cloudflare's free Universal SSL only covers one level deep.
+  NEXT_PUBLIC_API_URL="https://hestia-api.sharvilpatel.dev" npm run build -w frontend
 
   echo "==> Staging standalone runtime at $RUNTIME_DIR"
   mkdir -p "$RUNTIME_DIR"
