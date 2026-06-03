@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { Suspense, useEffect, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Flame, KeyRound, QrCode, Hash, Loader2 } from 'lucide-react'
 import { authLoginWithQr, authLoginWithWords } from '@/lib/api'
@@ -15,7 +15,19 @@ import { saveKeyWords, useInvalidateCurrentUser } from '@/lib/currentUser'
 
 type Tab = 'passkey' | 'words' | 'qr'
 
-export default function Login() {
+// useSearchParams() forces a client-side bailout during static prerendering, so
+// Next.js requires its consumer to live inside a <Suspense> boundary. Without
+// this wrapper, `next build` fails with the missing-suspense-with-csr-bailout
+// error. See: node_modules/next/dist/docs/01-app/03-api-reference/04-functions/use-search-params.md
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <Login />
+    </Suspense>
+  )
+}
+
+function Login() {
   const router = useRouter()
   const params = useSearchParams()
   const next = params.get('next') || '/'
