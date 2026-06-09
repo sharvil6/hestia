@@ -15,9 +15,14 @@ on:
       - '.github/workflows/frontend-ci.yml'
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint-typecheck:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v4
@@ -37,3 +42,10 @@ jobs:
       - name: Type check
         run: npx tsc --noEmit
         working-directory: frontend
+
+      # Catches CSR-bailout issues (e.g. useSearchParams without Suspense) that
+      # `tsc` and `next dev` both miss. See CLAUDE.md "Gotchas" section.
+      - name: Build
+        run: npm run build -w frontend
+        env:
+          NEXT_PUBLIC_API_URL: https://ci-placeholder.invalid

@@ -1,7 +1,16 @@
 name: Deploy
 
+# Gate deploy on CI passing. `workflow_run` fires after either CI workflow
+# completes; the job-level `if` then checks that the triggering run was a
+# success on main. `workflow_dispatch` stays as a manual escape hatch.
+#
+# Note: a push that touches only `backend/**` won't trigger Frontend CI (and
+# vice versa) because of the `paths:` filters on those workflows. So we react
+# to either one completing — whichever fired for this push.
 on:
-  push:
+  workflow_run:
+    workflows: ["Backend CI", "Frontend CI"]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
@@ -12,7 +21,11 @@ concurrency:
 
 jobs:
   deploy:
+    # Manual dispatch always runs; workflow_run only runs when the upstream CI
+    # workflow succeeded.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: self-hosted
+    timeout-minutes: 20
     steps:
       - name: Build (as hestia user)
         run: sudo -n -u hestia /bin/bash /srv/hestia/repo/deploy/deploy.sh
