@@ -1,0 +1,39 @@
+name: _frontend-ci
+
+# Reusable workflow: frontend lint, typecheck, and build.
+# Called by .github/workflows/frontend-ci.yml (PR runs) and deploy.yml (gating main).
+# Underscore prefix marks it as private — not triggered directly.
+
+on:
+  workflow_call:
+
+jobs:
+  lint-typecheck-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+        working-directory: frontend
+
+      - name: Type check
+        run: npx tsc --noEmit
+        working-directory: frontend
+
+      # Catches CSR-bailout issues (e.g. useSearchParams without Suspense) that
+      # `tsc` and `next dev` both miss. See CLAUDE.md "Gotchas" section.
+      - name: Build
+        run: npm run build -w frontend
+        env:
+          NEXT_PUBLIC_API_URL: https://ci-placeholder.invalid

@@ -1,0 +1,31 @@
+name: _backend-ci
+
+# Reusable workflow: backend lint/type/test.
+# Called by .github/workflows/backend-ci.yml (PR runs) and deploy.yml (gating main).
+# Underscore prefix marks it as private — not triggered directly.
+
+on:
+  workflow_call:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        run: pytest tests/ -v

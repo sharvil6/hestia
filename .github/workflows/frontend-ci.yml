@@ -1,18 +1,17 @@
 name: Frontend CI
 
+# PR-only entry point. Main-branch CI runs inside deploy.yml so that the
+# deploy job can `needs:` it directly — no `workflow_run` race.
+# Logic lives in _frontend-ci.yml.
+
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'frontend/**'
-      - 'shared/**'
-      - '.github/workflows/frontend-ci.yml'
   pull_request:
     branches: [main]
     paths:
       - 'frontend/**'
       - 'shared/**'
       - '.github/workflows/frontend-ci.yml'
+      - '.github/workflows/_frontend-ci.yml'
   workflow_dispatch:
 
 concurrency:
@@ -20,32 +19,5 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint-typecheck:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Lint
-        run: npm run lint
-        working-directory: frontend
-
-      - name: Type check
-        run: npx tsc --noEmit
-        working-directory: frontend
-
-      # Catches CSR-bailout issues (e.g. useSearchParams without Suspense) that
-      # `tsc` and `next dev` both miss. See CLAUDE.md "Gotchas" section.
-      - name: Build
-        run: npm run build -w frontend
-        env:
-          NEXT_PUBLIC_API_URL: https://ci-placeholder.invalid
+  ci:
+    uses: ./.github/workflows/_frontend-ci.yml

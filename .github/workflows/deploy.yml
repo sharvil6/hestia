@@ -1,16 +1,11 @@
 name: Deploy
 
-# Gate deploy on CI passing. `workflow_run` fires after either CI workflow
-# completes; the job-level `if` then checks that the triggering run was a
-# success on main. `workflow_dispatch` stays as a manual escape hatch.
-#
-# Note: a push that touches only `backend/**` won't trigger Frontend CI (and
-# vice versa) because of the `paths:` filters on those workflows. So we react
-# to either one completing — whichever fired for this push.
+# Runs full CI in parallel on every push to main, then deploys only if both
+# CI jobs pass. The deploy job runs on the self-hosted runner on the prod VM;
+# CI jobs run on GitHub-hosted ubuntu-latest.
+
 on:
-  workflow_run:
-    workflows: ["Backend CI", "Frontend CI"]
-    types: [completed]
+  push:
     branches: [main]
   workflow_dispatch:
 
@@ -20,10 +15,14 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  backend-ci:
+    uses: ./.github/workflows/_backend-ci.yml
+
+  frontend-ci:
+    uses: ./.github/workflows/_frontend-ci.yml
+
   deploy:
-    # Manual dispatch always runs; workflow_run only runs when the upstream CI
-    # workflow succeeded.
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    needs: [backend-ci, frontend-ci]
     runs-on: self-hosted
     timeout-minutes: 20
     steps:

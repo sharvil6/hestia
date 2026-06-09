@@ -1,16 +1,16 @@
 name: Backend CI
 
+# PR-only entry point. Main-branch CI runs inside deploy.yml so that the
+# deploy job can `needs:` it directly — no `workflow_run` race.
+# Logic lives in _backend-ci.yml.
+
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'backend/**'
-      - '.github/workflows/backend-ci.yml'
   pull_request:
     branches: [main]
     paths:
       - 'backend/**'
       - '.github/workflows/backend-ci.yml'
+      - '.github/workflows/_backend-ci.yml'
   workflow_dispatch:
 
 concurrency:
@@ -18,24 +18,5 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    defaults:
-      run:
-        working-directory: backend
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: pip
-          cache-dependency-path: backend/requirements.txt
-
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
-      - name: Run tests
-        run: pytest tests/ -v
+  ci:
+    uses: ./.github/workflows/_backend-ci.yml
