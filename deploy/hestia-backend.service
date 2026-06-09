@@ -12,6 +12,16 @@ EnvironmentFile=/srv/hestia/.env
 Environment=DB_DIR=/srv/hestia/data/db
 Environment=UPLOAD_DIR=/srv/hestia/data/uploads
 Environment=CORS_ORIGINS=https://hestia.sharvilpatel.dev
+# Auth cookie must be scoped to the registrable domain so it's visible to both
+# hestia.sharvilpatel.dev (frontend) and hestia-api.sharvilpatel.dev (API).
+# Without the leading-dot Domain, the proxy.ts gate in the frontend can't see
+# the session cookie and bounces every request to /login.
+Environment=HESTIA_COOKIE_SECURE=true
+Environment=HESTIA_COOKIE_SAMESITE=lax
+Environment=HESTIA_COOKIE_DOMAIN=.sharvilpatel.dev
+Environment=HESTIA_PUBLIC_URL=https://hestia.sharvilpatel.dev
+Environment=HESTIA_RP_ID=hestia.sharvilpatel.dev
+Environment=HESTIA_EXPECTED_ORIGINS=https://hestia.sharvilpatel.dev
 ExecStart=/srv/hestia/repo/backend/.venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000
 Restart=on-failure
 RestartSec=5

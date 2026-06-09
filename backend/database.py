@@ -3,8 +3,17 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy import event
 
-# Determine db path. Default to local data/db dir in root of project.
-DB_DIR = os.environ.get("DB_DIR", os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "db")))
+# DB_DIR must be set in the environment — by backend/.env in dev (loaded by
+# uvicorn/main.py via python-dotenv) or by the systemd unit in prod. A silent
+# fallback here used to create phantom databases when a script imported this
+# module without loading .env first, so we refuse to guess.
+DB_DIR = os.environ.get("DB_DIR")
+if not DB_DIR:
+    raise RuntimeError(
+        "DB_DIR is not set. In dev, run from backend/ so backend/.env is loaded "
+        "(uvicorn main:app --reload), or call dotenv.load_dotenv() before "
+        "importing database. In prod, the systemd unit sets DB_DIR explicitly."
+    )
 os.makedirs(DB_DIR, exist_ok=True)
 SQLALCHEMY_DATABASE_URL = f"sqlite:///{os.path.join(DB_DIR, 'hestia.db')}"
 

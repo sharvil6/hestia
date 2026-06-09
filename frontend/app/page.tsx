@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getRecipes } from '@/lib/api'
-import { useCurrentUserId } from '@/lib/currentUser'
+import { useCurrentUser } from '@/lib/currentUser'
 import type { Recipe } from '@hestia/shared/types'
 import Link from 'next/link'
 import AddRecipeModal from '@/components/AddRecipeModal'
@@ -17,10 +17,10 @@ import {
   BookOpen,
 } from 'lucide-react'
 
-const FAMILY_MEMBERS: Record<string, { name: string; initial: string }> = {
-  '1': { name: 'Mom', initial: 'M' },
-  '2': { name: 'Dad', initial: 'D' },
-  '3': { name: 'Kids', initial: 'K' },
+function initialFor(name: string | undefined): string {
+  if (!name) return '?'
+  const trimmed = name.trim()
+  return trimmed ? trimmed.charAt(0).toUpperCase() : '?'
 }
 
 function SkeletonCard() {
@@ -47,14 +47,18 @@ function SkeletonCard() {
 
 export default function Home() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
-  const currentUserId = useCurrentUserId()
+  const { data: currentUser } = useCurrentUser()
 
   const { data: recipes, isLoading } = useQuery<Recipe[]>({
     queryKey: ['recipes'],
     queryFn: getRecipes,
   })
 
-  const currentUser = currentUserId ? FAMILY_MEMBERS[currentUserId] : null
+  // Signed in → click avatar to manage account. Signed out → go log in.
+  const avatarHref = currentUser ? '/settings/security' : '/login'
+  const avatarLabel = currentUser
+    ? `Account settings for ${currentUser.display_name}`
+    : 'Sign in'
 
   return (
     <main
@@ -92,13 +96,20 @@ export default function Home() {
           </div>
 
           <Link
-            href="/login"
+            href={avatarHref}
+            aria-label={avatarLabel}
+            title={avatarLabel}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
               gap: '6px',
               textDecoration: 'none',
+              padding: '2px',
+              borderRadius: 'var(--radius-pill)',
+              transition: `background var(--duration-fast) var(--ease-standard)`,
             }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-surface-sunken)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
           >
             <div
               style={{
@@ -116,7 +127,7 @@ export default function Home() {
                 fontWeight: 600,
               }}
             >
-              {currentUser ? currentUser.initial : '?'}
+              {initialFor(currentUser?.display_name)}
             </div>
             <ChevronDown
               size={12}
