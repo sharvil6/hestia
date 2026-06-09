@@ -32,17 +32,15 @@ function Login() {
   const params = useSearchParams()
   const next = params.get('next') || '/'
   const invalidate = useInvalidateCurrentUser()
-  const [tab, setTab] = useState<Tab>('words')  // safe default; we upgrade to 'passkey' once mounted
+  const [tab, setTab] = useState<Tab>('words')  // safe default; we upgrade to 'passkey' after hydration
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [mounted, setMounted] = useState(false)
   const [passkeyOk, setPasskeyOk] = useState(false)
 
   // Defer browser feature detection to after hydration to keep SSR + client
   // markup identical. Without this, picking the default tab based on WebAuthn
   // availability flips between server (false) and client (true).
   useEffect(() => {
-    setMounted(true)
     const ok = passkeysSupported()
     setPasskeyOk(ok)
     if (ok) setTab('passkey')

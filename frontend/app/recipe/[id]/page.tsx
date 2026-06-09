@@ -134,7 +134,8 @@ export default function RecipeDetail() {
   const toggleIngredient = (i: number) => {
     setCheckedIngredients(prev => {
       const next = new Set(prev)
-      next.has(i) ? next.delete(i) : next.add(i)
+      if (next.has(i)) next.delete(i)
+      else next.add(i)
       return next
     })
   }
@@ -155,8 +156,6 @@ export default function RecipeDetail() {
       </div>
     </main>
   )
-
-  const totalTime = (recipe.prep_time || 0) + (recipe.cook_time || 0)
 
   return (
     <main style={{ minHeight: '100vh', background: 'var(--color-canvas)', color: 'var(--color-ink)' }}>

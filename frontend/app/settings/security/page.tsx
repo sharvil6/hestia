@@ -157,12 +157,18 @@ function KeySection() {
   const [show, setShow] = useState(false)
   const [copied, setCopied] = useState(false)
 
+  // Read once on mount. Lazy useState would cause an SSR/CSR hydration
+  // mismatch since this is a 'use client' component rendered on both.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setWords(readSavedKeyWords()) }, [])
 
   useEffect(() => {
-    if (!show || !words) { setQrUrl(null); return }
+    if (!show || !words) return
+    let cancelled = false
     QRCode.toDataURL(wordsToQrPayload(words), { width: 280, margin: 1 })
-      .then(setQrUrl).catch(() => {})
+      .then((url) => { if (!cancelled) setQrUrl(url) })
+      .catch(() => {})
+    return () => { cancelled = true }
   }, [show, words])
 
   const rotate = useMutation({
@@ -214,7 +220,6 @@ function KeySection() {
               display: 'flex', justifyContent: 'center', padding: 12, marginBottom: 12,
               background: 'white', borderRadius: 'var(--radius-md)',
             }}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={qrUrl} alt="Recovery QR" style={{ width: 240, height: 240 }} />
             </div>
           )}
@@ -355,7 +360,6 @@ function AdminSection() {
           {inviteQr && (
             <div style={{ display: 'flex', justifyContent: 'center', padding: 8,
               background: 'white', borderRadius: 'var(--radius-md)' }}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={inviteQr} alt="Invite QR" style={{ width: 200, height: 200 }} />
             </div>
           )}

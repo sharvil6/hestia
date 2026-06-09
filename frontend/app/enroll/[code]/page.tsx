@@ -128,7 +128,6 @@ export default function EnrollPage({ params }: { params: Promise<{ code: string 
                   </summary>
                   <div style={{ display: 'flex', justifyContent: 'center', padding: 12,
                     background: 'white', borderRadius: 'var(--radius-md)' }}>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={qrDataUrl} alt="Recovery QR" style={{ width: 240, height: 240 }} />
                   </div>
                 </details>
