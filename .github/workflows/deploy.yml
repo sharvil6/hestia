@@ -24,9 +24,12 @@ jobs:
 
       - name: Backend health check
         run: |
+          # Silence transient connection errors during the retry window — the
+          # service takes ~1s to bind the port after `systemctl restart`, and
+          # the first few attempts may fail noisily without indicating a problem.
           for i in {1..30}; do
-            if curl -fsS http://127.0.0.1:8000/health >/dev/null; then
-              echo "backend OK"; exit 0
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null 2>&1; then
+              echo "backend OK after ${i} attempt(s)"; exit 0
             fi
             sleep 2
           done
@@ -37,8 +40,8 @@ jobs:
       - name: Frontend health check
         run: |
           for i in {1..30}; do
-            if curl -fsS http://127.0.0.1:3000/ >/dev/null; then
-              echo "frontend OK"; exit 0
+            if curl -fsS http://127.0.0.1:3000/ >/dev/null 2>&1; then
+              echo "frontend OK after ${i} attempt(s)"; exit 0
             fi
             sleep 2
           done
