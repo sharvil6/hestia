@@ -1,8 +1,9 @@
 name: Deploy
 
-# Runs full CI in parallel on every push to main, then deploys only if both
+# Runs full CI in parallel on every push to main, then deploys only if all
 # CI jobs pass. The deploy job runs on the self-hosted runner on the prod VM;
-# CI jobs run on GitHub-hosted ubuntu-latest.
+# the mobile-publish job uses EAS Update to ship an OTA bundle to the preview
+# channel. CI jobs run on GitHub-hosted ubuntu-latest.
 
 on:
   push:
@@ -16,13 +17,65 @@ concurrency:
 
 jobs:
   backend-ci:
-    uses: ./.github/workflows/_backend-ci.yml
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run tests
+        run: pytest tests/ -v
 
   frontend-ci:
-    uses: ./.github/workflows/_frontend-ci.yml
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+        working-directory: frontend
+      - name: Type check
+        run: npx tsc --noEmit
+        working-directory: frontend
+      - name: Build
+        run: npm run build -w frontend
+        env:
+          NEXT_PUBLIC_API_URL: https://ci-placeholder.invalid
+
+  mobile-ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps --no-audit
+      - name: Type check
+        run: npx tsc --noEmit
 
   deploy:
-    needs: [backend-ci, frontend-ci]
+    needs: [backend-ci, frontend-ci, mobile-ci]
     runs-on: self-hosted
     timeout-minutes: 20
     steps:
@@ -60,3 +113,33 @@ jobs:
           echo "Frontend failed to become healthy within 60s" >&2
           sudo -n /usr/bin/journalctl -u hestia-frontend.service -n 50 --no-pager >&2
           exit 1
+
+  mobile-publish:
+    # EAS Update — publishes an OTA JS bundle to the "preview" channel. Open
+    # the project in Expo Go to pull the latest build.
+    #
+    # Prerequisites (one-time):
+    #   1. Run `eas update:configure` inside mobile/ to add expo-updates to app.json
+    #   2. Add EXPO_TOKEN to GitHub repo secrets (expo.dev → Account → Access Tokens)
+    needs: [backend-ci, frontend-ci, mobile-ci]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: CICD
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps --no-audit
+        working-directory: mobile
+      - name: Publish EAS Update
+        run: eas update --branch preview --message "CI ${{ github.sha }}"
+        working-directory: mobile
