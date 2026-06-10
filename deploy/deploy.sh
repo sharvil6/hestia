@@ -23,6 +23,46 @@ git fetch origin main
 git reset --hard origin/main
 new_sha="$(git rev-parse HEAD)"
 
+# Guard against systemd unit drift. The CI/CD path deliberately can't install
+# unit files (gh-runner has no sudo for /etc/systemd/system/), so any diff
+# between deploy/*.service in the repo and what's installed on the VM means
+# the next `systemctl restart` will re-read a stale unit and silently ignore
+# your env-var / hardening changes. Fail loudly here so it's caught at deploy
+# time, not while chasing a ghost in prod three hours later.
+echo "==> Verifying systemd unit files are in sync"
+unit_drift=false
+for unit in hestia-backend.service hestia-frontend.service; do
+  repo_file="$REPO_DIR/deploy/$unit"
+  installed_file="/etc/systemd/system/$unit"
+  if [[ ! -f "$installed_file" ]]; then
+    echo "    !! /etc/systemd/system/$unit is missing on this host"
+    unit_drift=true
+    continue
+  fi
+  if ! cmp -s "$repo_file" "$installed_file"; then
+    echo "    !! $unit differs from the installed copy:"
+    diff -u "$installed_file" "$repo_file" || true
+    unit_drift=true
+  fi
+done
+if [[ "$unit_drift" == "true" ]]; then
+  cat >&2 <<EOF
+
+  ==> Refusing to deploy: systemd unit files in this repo do not match
+      what's installed in /etc/systemd/system/. Restarting the services now
+      would re-read the stale units and silently drop any env-var or
+      hardening changes in this commit.
+
+      Fix on the VM (idempotent — only re-installs units + daemon-reload):
+
+        sudo bash $REPO_DIR/deploy/install.sh
+
+      Then re-run this deploy.
+
+EOF
+  exit 1
+fi
+
 changed_paths=""
 if [[ "$prev_sha" != "$new_sha" ]]; then
   changed_paths="$(git diff --name-only "$prev_sha" "$new_sha")"
