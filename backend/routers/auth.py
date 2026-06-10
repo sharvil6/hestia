@@ -421,9 +421,15 @@ def passkey_register_begin(
         p.credential_id
         for p in db.query(Passkey).filter(Passkey.user_id == user.id, Passkey.revoked_at.is_(None)).all()
     ]
+    # WebAuthn user.name is an account handle (think email / login), used by
+    # password managers to disambiguate entries; user.displayName is the friendly
+    # name. We have no email, so synthesize a stable handle from display_name +
+    # rp_id so 1Password / Keychain show something like "sharvil@hestia.sharvilpatel.dev"
+    # rather than a bare "Sharvil" that collides across services.
+    user_handle = f"{user.display_name.strip().lower().replace(' ', '.')}@{config.RP_ID}"
     challenge, options_json = pk.begin_registration(
         user_id=user.id.encode("utf-8"),
-        user_name=user.display_name,
+        user_name=user_handle,
         user_display_name=user.display_name,
         exclude_credential_ids=existing_ids,
     )

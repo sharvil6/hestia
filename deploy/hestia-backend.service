@@ -21,6 +21,7 @@ Environment=HESTIA_COOKIE_SAMESITE=lax
 Environment=HESTIA_COOKIE_DOMAIN=.sharvilpatel.dev
 Environment=HESTIA_PUBLIC_URL=https://hestia.sharvilpatel.dev
 Environment=HESTIA_RP_ID=hestia.sharvilpatel.dev
+Environment=HESTIA_RP_NAME=Hestia
 Environment=HESTIA_EXPECTED_ORIGINS=https://hestia.sharvilpatel.dev
 ExecStart=/srv/hestia/repo/backend/.venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000
 Restart=on-failure
