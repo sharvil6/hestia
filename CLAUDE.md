@@ -24,6 +24,12 @@
 
 Start both processes (backend first, then frontend). Keep them running until the frontend loads in a browser without errors. Verify the golden paths (add recipe, scrape URL, upload image) before reporting the task done.
 
+## Local dev login (for Claude)
+
+A dedicated admin user `Claude Dev` exists in the **local** SQLite DB (`backend/data/db/hestia.db` only — not in prod) so Claude can drive the UI past the passkey gate during development.
+
+The 12-word key and login snippet live in `CLAUDE.local.md` at the project root (gitignored; not committed). If that file is missing on a fresh checkout, mint a new one with `python -m scripts.create_admin "Claude Dev" --force` from `backend/` (venv activated) and write the printed words into a new `CLAUDE.local.md`.
+
 ## Quick verification (`verify.ps1`)
 
 Use `verify.ps1` at the project root to quickly confirm your changes haven't broken the dev servers. It reuses any server already listening on the port and only cold-starts what's missing, so re-runs are near-instant.

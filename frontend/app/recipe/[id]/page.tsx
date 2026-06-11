@@ -509,13 +509,12 @@ export default function RecipeDetail() {
                             padding: '6px',
                             cursor: 'pointer',
                             color: 'var(--color-ink-muted)',
-                            opacity: 0,
                             transition: `opacity var(--duration-fast), border-color var(--duration-fast), color var(--duration-fast)`,
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
                           }}
-                          className="group-hover:opacity-100"
+                          className="opacity-100 md:opacity-0 md:group-hover:opacity-100"
                           onMouseEnter={e => {
                             e.currentTarget.style.borderColor = 'var(--color-brand)'
                             e.currentTarget.style.color = 'var(--color-brand)'
@@ -589,7 +588,7 @@ export default function RecipeDetail() {
                                     </span>
                                   )}
                                   {isOwner && !isEditing && (
-                                    <div style={{ display: 'flex', gap: '8px', opacity: 0, transition: 'opacity var(--duration-fast)' }} className="group-hover:opacity-100">
+                                    <div style={{ display: 'flex', gap: '8px', transition: 'opacity var(--duration-fast)' }} className="opacity-100 md:opacity-0 md:group-hover:opacity-100">
                                       <button
                                         onClick={() => { setEditingAnnId(ann.id); setEditNoteContent(ann.content); setEditNoteImage(null) }}
                                         style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-ink-disabled)', padding: '2px', display: 'flex' }}

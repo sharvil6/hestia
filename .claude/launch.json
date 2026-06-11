@@ -1,12 +1,17 @@
-{
+﻿{
   "version": "0.0.1",
   "configurations": [
     {
       "name": "frontend",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "-w", "frontend"],
-      "port": 3000,
-      "autoPort": false
+      "runtimeArgs": ["run", "dev", "--workspace", "frontend"],
+      "port": 3000
+    },
+    {
+      "name": "backend",
+      "runtimeExecutable": "cmd.exe",
+      "runtimeArgs": ["/c", "cd backend && backend\\.venv\\Scripts\\uvicorn.exe main:app --reload"],
+      "port": 8000
     }
   ]
 }

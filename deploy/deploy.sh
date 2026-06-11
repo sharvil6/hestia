@@ -89,7 +89,10 @@ if $backend_changed || [[ ! -d "$VENV" ]]; then
     python3 -m venv "$VENV"
   fi
   "$VENV/bin/pip" install --upgrade pip wheel
-  "$VENV/bin/pip" install -r backend/requirements.txt
+  # --upgrade so floor-pinned reqs (recipe-scrapers>=15.0.0 etc.) actually move
+  # forward over time. Without it, pip leaves whatever was first installed in
+  # place, and prod silently drifts years behind requirements.txt's intent.
+  "$VENV/bin/pip" install --upgrade -r backend/requirements.txt
 else
   echo "==> Backend unchanged, skipping pip install"
 fi

@@ -366,7 +366,7 @@ export default function EditRecipeModal({ isOpen, onClose, recipe }: EditRecipeM
                                {ing.note && <span className="text-gray-400 ml-1 italic text-sm">, {ing.note}</span>}
                             </div>
                           </div>
-                          <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="flex items-center opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                             <button 
                               onClick={() => {
                                 setEditingIngredientIdx(idx);
@@ -461,7 +461,7 @@ export default function EditRecipeModal({ isOpen, onClose, recipe }: EditRecipeM
                               <img src={step.imagePreviewUrl} alt={`Step ${idx + 1}`} className="mt-2 max-h-40 w-auto rounded-md border border-gray-200 object-cover" />
                             )}
                           </div>
-                          <div className="flex flex-col items-center opacity-0 group-hover:opacity-100 transition-opacity self-start gap-3">
+                          <div className="flex flex-col items-center opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity self-start gap-3">
                             <button 
                               onClick={() => {
                                 setEditingInstructionIdx(idx);

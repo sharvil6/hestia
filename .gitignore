@@ -196,3 +196,6 @@ cython_debug/
 
 # verify.ps1 dev-server PID tracking (per-machine, never share)
 .verify-pids.json
+
+# Local-only Claude notes (contains dev login words; never commit)
+CLAUDE.local.md
