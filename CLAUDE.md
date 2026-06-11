@@ -35,19 +35,32 @@ The 12-word key and login snippet live in `CLAUDE.local.md` at the project root 
 Use `verify.ps1` at the project root to quickly confirm your changes haven't broken the dev servers. It reuses any server already listening on the port and only cold-starts what's missing, so re-runs are near-instant.
 
 ```
-.\verify.ps1                # backend + frontend  (default)
+.\verify.ps1                # backend + frontend  (default, blocking + fail-fast)
 .\verify.ps1 -Backend       # backend only
 .\verify.ps1 -Mobile        # also start + check the Expo/Metro bundler
 .\verify.ps1 -All           # backend + frontend + mobile
+.\verify.ps1 -Check         # probe-only health check, never starts anything (sub-second)
+.\verify.ps1 -Start         # launch what's down and return immediately (non-blocking)
 .\verify.ps1 -Stop          # kill servers this script previously started
 ```
 
 What it checks:
-- **backend** — `GET /` returns a JSON object with `status`, and `GET /recipes/` returns 200.
+- **backend** — `GET /` and `GET /health` return JSON with a `status` key; `GET /recipes/` returns 401 (auth gate wired).
 - **frontend** — `GET http://127.0.0.1:3000/` returns 200.
 - **mobile** — Metro's `/status` reports `packager-status:running`.
 
-Tracked PIDs are written to `.verify-pids.json`; use `-Stop` to tear them down. Servers it didn't start (already running) are left alone. Exit code is 0 on pass, 1 on any failure — safe to chain with `; if ($?) { ... }`.
+**Responsive workflow — no large tool timeouts needed.** The default mode blocks until ready but **fails fast**: if a server process exits (backend import crash) or a build-error marker appears in its log (`Failed to compile`, `Module not found`, `Traceback`, …), it returns in ~1s with the error tail instead of waiting out the budget. To avoid any long-blocking call entirely, launch then poll:
+
+```
+.\verify.ps1 -Start         # returns in a few seconds (just catches instant crashes)
+.\verify.ps1 -Check         # ~1s; repeat until exit 0 (healthy) or 1 (failing)
+```
+
+`-Check` never starts a server, so each call is cheap — ideal for polling a cold start without holding the tool open. The backend's Gemini-vision init makes a cold backend take ~25-30s to answer; `-Start` won't block on that, `-Check` polls for it.
+
+Exit codes: **0** = all selected services healthy; **1** = a service is up but failing its checks (real breakage); **2** = (`-Check` only) a service isn't listening yet (still warming / not started). Safe to chain with `; if ($?) { ... }` (`$?`/`$LASTEXITCODE`).
+
+Tracked PIDs are written to `.verify-pids.json`; use `-Stop` to tear them down. Servers it didn't start (already running) are left alone.
 
 Run this after edits as a fast smoke test instead of starting servers by hand. It is NOT a substitute for exercising golden paths in the browser when you change UI.
 
