@@ -1,16 +1,15 @@
 import logging
-import requests
+from curl_cffi import requests
 from recipe_scrapers import scrape_html
 from schemas import RecipeCreate, IngredientBase, InstructionBase
 
 logger = logging.getLogger("hestia.scraper")
 
+# curl_cffi impersonates a real browser's TLS/JA3 + HTTP/2 fingerprint, which
+# is what trips Cloudflare on sites like seriouseats.com when plain `requests`
+# is used from a server. Keep this; reverting to `requests` will resurrect the
+# HTTP 403 we saw on 2026-06-10.
 _HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/124.0.0.0 Safari/537.36"
-    ),
     "Accept-Language": "en-US,en;q=0.9",
 }
 
@@ -97,7 +96,7 @@ def _parse_ingredient_string(raw: str) -> IngredientBase:
 
 def scrape_recipe_from_url(url: str) -> RecipeCreate:
     logger.info("Scraping URL: %s", url)
-    response = requests.get(url, headers=_HEADERS, timeout=15)
+    response = requests.get(url, headers=_HEADERS, timeout=15, impersonate="chrome")
     logger.info("HTTP %s from %s", response.status_code, url)
     response.raise_for_status()
     scraper = scrape_html(response.text, org_url=url, wild_mode=True)

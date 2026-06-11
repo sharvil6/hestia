@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getRecipes } from '@/lib/api'
 import { useCurrentUser } from '@/lib/currentUser'
@@ -47,12 +47,25 @@ function SkeletonCard() {
 
 export default function Home() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
+  const [query, setQuery] = useState('')
   const { data: currentUser } = useCurrentUser()
 
   const { data: recipes, isLoading } = useQuery<Recipe[]>({
     queryKey: ['recipes'],
     queryFn: getRecipes,
   })
+
+  const filteredRecipes = useMemo(() => {
+    if (!recipes) return recipes
+    const q = query.trim().toLowerCase()
+    if (!q) return recipes
+    return recipes.filter(r => {
+      if (r.title?.toLowerCase().includes(q)) return true
+      if (r.description?.toLowerCase().includes(q)) return true
+      if (r.tags?.some(t => t.name?.toLowerCase().includes(q))) return true
+      return false
+    })
+  }, [recipes, query])
 
   // Signed in → click avatar to manage account. Signed out → go log in.
   const avatarHref = currentUser ? '/settings/security' : '/login'
@@ -152,6 +165,8 @@ export default function Home() {
           <input
             type="search"
             placeholder="Search family recipes..."
+            value={query}
+            onChange={e => setQuery(e.target.value)}
             style={{
               width: '100%',
               padding: '14px 16px 14px 44px',
@@ -252,10 +267,43 @@ export default function Home() {
               <Plus size={16} /> Add your first recipe
             </button>
           </div>
+        ) : !filteredRecipes || filteredRecipes.length === 0 ? (
+          /* No-match state */
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              padding: '64px 24px',
+              textAlign: 'center',
+            }}
+          >
+            <h2
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: '20px',
+                fontWeight: 600,
+                color: 'var(--color-ink)',
+                marginBottom: '8px',
+              }}
+            >
+              No recipes match “{query.trim()}”
+            </h2>
+            <p
+              style={{
+                fontSize: '14px',
+                color: 'var(--color-ink-secondary)',
+                maxWidth: '320px',
+                lineHeight: 1.6,
+              }}
+            >
+              Try a different word, or clear the search to see everything.
+            </p>
+          </div>
         ) : (
           /* Masonry columns */
           <div style={{ columns: '1', gap: '20px' }} className="sm:columns-2 lg:columns-3">
-            {recipes.map((recipe) => {
+            {filteredRecipes.map((recipe) => {
               const titleSize = recipe.title?.length <= 30 ? '20px' : '18px'
               const totalTime =
                 (recipe.prep_time || 0) + (recipe.cook_time || 0)
