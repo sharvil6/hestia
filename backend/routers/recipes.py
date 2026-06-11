@@ -14,6 +14,25 @@ logger = logging.getLogger("hestia.recipes")
 
 router = APIRouter(prefix="/recipes", tags=["Recipes"])
 
+
+def resolve_tags(db: Session, tag_names: List[str]) -> List["models.Tag"]:
+    """Normalize tag names (trim + lowercase), de-duplicate, and map each to an
+    existing Tag row or a freshly created one. Tags are always stored lowercase."""
+    resolved = []
+    seen = set()
+    for raw in tag_names:
+        name = (raw or "").strip().lower()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        tag = db.query(models.Tag).filter(models.Tag.name == name).first()
+        if not tag:
+            tag = models.Tag(name=name)
+            db.add(tag)
+        resolved.append(tag)
+    return resolved
+
+
 @router.get("/", response_model=List[schemas.RecipeResponse])
 def read_recipes(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), _user=Depends(get_current_user)):
     recipes = db.query(models.Recipe).offset(skip).limit(limit).all()
@@ -40,17 +59,9 @@ def create_recipe(recipe: schemas.RecipeCreate, db: Session = Depends(get_db), _
         instructions=[inst.model_dump() for inst in recipe.instructions]
     )
     
-    # Look up or create tags
-    for tag_name in recipe.tags:
-        tag_name = tag_name.strip()
-        if not tag_name:
-            continue
-        tag = db.query(models.Tag).filter(models.Tag.name == tag_name).first()
-        if not tag:
-            tag = models.Tag(name=tag_name)
-            db.add(tag)
-        db_recipe.tags.append(tag)
-    
+    # Look up or create tags (normalized to lowercase)
+    db_recipe.tags = resolve_tags(db, recipe.tags)
+
     db.add(db_recipe)
     db.commit()
     db.refresh(db_recipe)
@@ -81,18 +92,9 @@ def update_recipe(recipe_id: str, recipe: schemas.RecipeCreate, db: Session = De
     db_recipe.ingredients = [ing.model_dump() for ing in recipe.ingredients]
     db_recipe.instructions = [inst.model_dump() for inst in recipe.instructions]
     
-    # Update tags
-    db_recipe.tags = []
-    for tag_name in recipe.tags:
-        tag_name = tag_name.strip()
-        if not tag_name:
-            continue
-        tag = db.query(models.Tag).filter(models.Tag.name == tag_name).first()
-        if not tag:
-            tag = models.Tag(name=tag_name)
-            db.add(tag)
-        db_recipe.tags.append(tag)
-        
+    # Update tags (normalized to lowercase)
+    db_recipe.tags = resolve_tags(db, recipe.tags)
+
     db.commit()
     db.refresh(db_recipe)
     return db_recipe

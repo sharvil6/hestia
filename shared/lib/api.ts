@@ -46,6 +46,8 @@ export const getRecipe = (id: string) => apiFetch(`/recipes/${id}`);
 export const searchRecipes = (q: string) =>
   apiFetch(`/recipes/search/fts?q=${encodeURIComponent(q)}`);
 
+export const getTags = () => apiFetch('/tags/');
+
 export const createRecipe = (recipe: object) =>
   apiFetch('/recipes/', {
     method: 'POST',

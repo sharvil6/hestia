@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X, Plus, Trash2, Clock, Users, BookOpen, Link2, PenLine, Loader2, AlertCircle, Image as ImageIcon, Camera, Upload } from 'lucide-react';
 import { createRecipe, scrapeRecipePreview, uploadRecipeImage, visionRecipePreview } from '@/lib/api';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import TagInput from '@/components/TagInput';
 
 interface AddRecipeModalProps {
   isOpen: boolean;
@@ -59,7 +60,8 @@ export default function AddRecipeModal({ isOpen, onClose }: AddRecipeModalProps)
   const [yieldAmount, setYieldAmount] = useState<number | ''>(1);
   const [prepTime, setPrepTime] = useState<number | ''>('');
   const [cookTime, setCookTime] = useState<number | ''>('');
-  
+  const [tags, setTags] = useState<string[]>([]);
+
   // Dynamic Lists State
   const [ingredients, setIngredients] = useState<ParsedIngredient[]>([]);
   const [ingredientInput, setIngredientInput] = useState('');
@@ -88,6 +90,7 @@ export default function AddRecipeModal({ isOpen, onClose }: AddRecipeModalProps)
     mutationFn: createRecipe,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['recipes'] });
+      queryClient.invalidateQueries({ queryKey: ['tags'] });
       resetForm();
       onClose();
     },
@@ -108,6 +111,7 @@ export default function AddRecipeModal({ isOpen, onClose }: AddRecipeModalProps)
     setInstructions([]);
     setInstructionInput('');
     setInstructionImage(null);
+    setTags([]);
     setTabMode('manual');
     setUrlInput('');
     setUrlStep('input');
@@ -147,6 +151,7 @@ export default function AddRecipeModal({ isOpen, onClose }: AddRecipeModalProps)
       setPrepTime(data.prep_time || '');
       setCookTime(data.cook_time || '');
       setImportedUrl('');
+      setTags(data.tags || []);
       const ingList: ParsedIngredient[] = (data.ingredients || []).map((ing: RawIngredient) => ({
         raw: `${ing.qty} ${ing.unit} ${ing.item}`.trim(),
         qty: ing.qty ?? 1,
@@ -233,6 +238,7 @@ export default function AddRecipeModal({ isOpen, onClose }: AddRecipeModalProps)
       setPrepTime(data.prep_time || '');
       setCookTime(data.cook_time || '');
       setImportedUrl(url);
+      setTags(data.tags || []);
 
       // Map scraped ingredients — they come back as { qty, unit, item, note }
       const ingList: ParsedIngredient[] = (data.ingredients || []).map((ing: RawIngredient) => ({
@@ -289,7 +295,7 @@ export default function AddRecipeModal({ isOpen, onClose }: AddRecipeModalProps)
       prep_time: prepTime || null,
       cook_time: cookTime || null,
       source_url: importedUrl || null,
-      tags: [],
+      tags,
       ingredients: ingredients.map(ing => ({
         qty: ing.qty,
         unit: ing.unit,
@@ -632,6 +638,9 @@ export default function AddRecipeModal({ isOpen, onClose }: AddRecipeModalProps)
                     </div>
                   </div>
                 </section>
+
+                {/* Tags */}
+                <TagInput value={tags} onChange={setTags} />
 
                 {/* Ingredients */}
                 <section className="space-y-4">

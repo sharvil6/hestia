@@ -82,9 +82,10 @@ logger.info("Upload directory: %s", UPLOAD_DIR)
 # Mount static files for images
 app.mount("/images", StaticFiles(directory=UPLOAD_DIR), name="images")
 
-from routers import recipes, auth
+from routers import recipes, auth, tags
 app.include_router(auth.router)
 app.include_router(recipes.router)
+app.include_router(tags.router)
 
 @app.get("/")
 def read_root():

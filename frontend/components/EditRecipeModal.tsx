@@ -3,6 +3,7 @@ import { X, Plus, Trash2, Clock, Users, BookOpen, PenLine, Loader2, Image as Ima
 import { updateRecipe, uploadRecipeImage } from '@/lib/api';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { Recipe, Ingredient, Instruction } from '@hestia/shared/types';
+import TagInput from '@/components/TagInput';
 
 type RecipeUpdatePayload = {
   title: string;
@@ -49,7 +50,8 @@ export default function EditRecipeModal({ isOpen, onClose, recipe }: EditRecipeM
   const [yieldAmount, setYieldAmount] = useState<number | ''>(1);
   const [prepTime, setPrepTime] = useState<number | ''>('');
   const [cookTime, setCookTime] = useState<number | ''>('');
-  
+  const [tags, setTags] = useState<string[]>([]);
+
   // Dynamic Lists State
   const [ingredients, setIngredients] = useState<ParsedIngredient[]>([]);
   const [ingredientInput, setIngredientInput] = useState('');
@@ -74,6 +76,7 @@ export default function EditRecipeModal({ isOpen, onClose, recipe }: EditRecipeM
       setYieldAmount(recipe.original_yield || '');
       setPrepTime(recipe.prep_time || '');
       setCookTime(recipe.cook_time || '');
+      setTags(recipe.tags?.map((t) => t.name) || []);
 
       const initialIngredients = recipe.ingredients?.map((ing: Ingredient) => ({
         raw: `${ing.qty} ${ing.unit} ${ing.item}`.trim(),
@@ -112,6 +115,7 @@ export default function EditRecipeModal({ isOpen, onClose, recipe }: EditRecipeM
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['recipe', recipe!.id] });
       queryClient.invalidateQueries({ queryKey: ['recipes'] });
+      queryClient.invalidateQueries({ queryKey: ['tags'] });
       onClose();
     },
     onError: (error) => {
@@ -211,7 +215,7 @@ export default function EditRecipeModal({ isOpen, onClose, recipe }: EditRecipeM
       cook_time: cookTime || null,
       source_url: recipe?.source_url || null,
       cover_image: recipe?.cover_image || null,
-      tags: recipe?.tags?.map((t) => t.name) || [],
+      tags,
       ingredients: ingredients.map(ing => ({
         qty: ing.qty,
         unit: ing.unit,
@@ -313,6 +317,8 @@ export default function EditRecipeModal({ isOpen, onClose, recipe }: EditRecipeM
                 </div>
               </div>
             </section>
+
+            <TagInput value={tags} onChange={setTags} />
 
             <section className="space-y-4">
               <h3 className="text-lg font-serif font-medium text-gray-800 flex items-center">
