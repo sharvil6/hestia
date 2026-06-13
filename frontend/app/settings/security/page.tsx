@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft, KeyRound, QrCode, RefreshCw, Trash2, UserPlus, ShieldOff,
-  Loader2, Plus, Copy, Check,
+  Loader2, Plus, Copy, Check, Share2,
 } from 'lucide-react'
 import QRCode from 'qrcode'
 import {
@@ -305,6 +305,14 @@ function AdminSection() {
   const [displayName, setDisplayName] = useState('')
   const [invite, setInvite] = useState<InviteCreated | null>(null)
   const [inviteQr, setInviteQr] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+  const [canShare, setCanShare] = useState(false)
+
+  // Feature-detect navigator.share in an effect to avoid an SSR/CSR hydration
+  // mismatch (it's undefined on the server).
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { setCanShare(typeof navigator !== 'undefined' && !!navigator.share) }, [])
+
   const { data: users } = useQuery<AdminUserInfo[]>({
     queryKey: ['auth', 'users'], queryFn: authListUsers,
   })
@@ -357,6 +365,29 @@ function AdminSection() {
             background: 'var(--color-surface-raised)', borderRadius: 'var(--radius-sm)',
             fontSize: 12, wordBreak: 'break-all',
           }}>{invite.enroll_url}</code>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+            <button onClick={() => {
+              navigator.clipboard.writeText(invite.enroll_url).then(() => {
+                setCopied(true); setTimeout(() => setCopied(false), 2000)
+              }).catch(() => {})
+            }} style={ghostButtonStyle(false)}>
+              {copied ? <Check size={16} /> : <Copy size={16} />}
+              {copied ? 'Copied' : 'Copy link'}
+            </button>
+            {canShare && (
+              <button onClick={async () => {
+                try {
+                  await navigator.share({
+                    title: 'Join Hestia',
+                    text: `${invite.intended_display_name}, here's your Hestia invite`,
+                    url: invite.enroll_url,
+                  })
+                } catch { /* user cancelled the share sheet */ }
+              }} style={ghostButtonStyle(false)}>
+                <Share2 size={16} /> Share
+              </button>
+            )}
+          </div>
           {inviteQr && (
             <div style={{ display: 'flex', justifyContent: 'center', padding: 8,
               background: 'white', borderRadius: 'var(--radius-md)' }}>
