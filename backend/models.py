@@ -156,3 +156,9 @@ class Annotation(Base):
     
     recipe = relationship("Recipe", back_populates="annotations")
     user = relationship("User")
+
+    @property
+    def author_name(self) -> str | None:
+        """Display name of the comment's author, for serialization. None if the
+        authoring user has been removed."""
+        return self.user.display_name if self.user else None

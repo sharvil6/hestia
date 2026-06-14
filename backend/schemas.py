@@ -66,6 +66,7 @@ class AnnotationResponse(AnnotationBase):
     id: str
     recipe_id: str
     user_id: Optional[str] = None
+    author_name: Optional[str] = None
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
 

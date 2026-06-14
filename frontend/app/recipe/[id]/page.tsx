@@ -25,19 +25,29 @@ import EditRecipeModal from '@/components/EditRecipeModal'
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
-const AVATAR_COLORS: Record<string, { bg: string; text: string }> = {
-  '1': { bg: 'oklch(92% 0.035 34)',  text: 'oklch(40% 0.14 34)' },
-  '2': { bg: 'oklch(91% 0.025 220)', text: 'oklch(38% 0.10 220)' },
-  '3': { bg: 'oklch(93% 0.040 128)', text: 'oklch(42% 0.075 128)' },
-}
-const FAMILY_NAMES: Record<string, string> = {
-  '1': 'Mom', '2': 'Dad', '3': 'Kids',
+// Avatar colors are assigned deterministically from a user's id so each person
+// keeps a stable, distinct color across recipes. Keyed lookups against seed ids
+// don't work in prod, where ids are UUIDs.
+const AVATAR_PALETTE: { bg: string; text: string }[] = [
+  { bg: 'oklch(92% 0.035 34)',  text: 'oklch(40% 0.14 34)' },
+  { bg: 'oklch(91% 0.025 220)', text: 'oklch(38% 0.10 220)' },
+  { bg: 'oklch(93% 0.040 128)', text: 'oklch(42% 0.075 128)' },
+  { bg: 'oklch(92% 0.035 300)', text: 'oklch(40% 0.12 300)' },
+  { bg: 'oklch(93% 0.045 70)',  text: 'oklch(42% 0.11 70)' },
+]
+const NEUTRAL_AVATAR = { bg: 'var(--color-surface-sunken)', text: 'var(--color-ink-muted)' }
+
+function avatarStyleFor(userId?: string) {
+  if (!userId) return NEUTRAL_AVATAR
+  let hash = 0
+  for (let i = 0; i < userId.length; i++) hash = (hash * 31 + userId.charCodeAt(i)) | 0
+  return AVATAR_PALETTE[Math.abs(hash) % AVATAR_PALETTE.length]
 }
 
 interface Ingredient { qty: number; unit: string; item: string; note?: string }
 interface Instruction  { step_number: number; text: string; image_path?: string }
 interface Annotation {
-  id: string; recipe_id: string; user_id?: string
+  id: string; recipe_id: string; user_id?: string; author_name?: string
   step_index?: number; content: string; image_path?: string; created_at: string
 }
 interface Recipe {
@@ -540,8 +550,8 @@ export default function RecipeDetail() {
                         }}
                       >
                         {stepAnns.map(ann => {
-                          const avatarStyle = ann.user_id ? AVATAR_COLORS[ann.user_id] : { bg: 'var(--color-surface-sunken)', text: 'var(--color-ink-muted)' }
-                          const authorName  = ann.user_id ? FAMILY_NAMES[ann.user_id] : null
+                          const avatarStyle = avatarStyleFor(ann.user_id)
+                          const authorName  = ann.author_name || null
                           const isOwner     = currentUserId === ann.user_id
                           const isEditing   = editingAnnId === ann.id
 
@@ -577,7 +587,7 @@ export default function RecipeDetail() {
                                   flexShrink: 0,
                                 }}
                               >
-                                {ann.user_id ? FAMILY_NAMES[ann.user_id]?.charAt(0) : '?'}
+                                {authorName ? authorName.charAt(0).toUpperCase() : '?'}
                               </div>
 
                               <div style={{ flex: 1 }}>
