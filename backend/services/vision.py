@@ -12,7 +12,7 @@ load_dotenv()
 
 logger = logging.getLogger("hestia.vision")
 
-_MODEL = "gemini-2.0-flash-lite"
+_MODEL = os.environ.get("GEMINI_VISION_MODEL", "gemini-2.5-flash-lite")
 
 client = None
 if os.environ.get("GEMINI_API_KEY"):
@@ -41,19 +41,28 @@ def extract_recipe_from_image(image_bytes: bytes) -> RecipeCreate:
     img.save(buf, format="JPEG")
     image = Image.from_raw_base64(base64.b64encode(buf.getvalue()).decode("ascii"))
 
-    recipe_data = client.chat.completions.create(
-        model=_MODEL,
-        response_model=RecipeCreate,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    "Extract the title, yield (as an integer), ingredients (qty, unit, name), and instructions from this image. Fix common OCR mistakes like 112 instead of 1/2.",
-                    image
-                ]
-            }
-        ]
-    )
-    
+    try:
+        recipe_data = client.chat.completions.create(
+            model=_MODEL,
+            response_model=RecipeCreate,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        "Extract the title, yield (as an integer), ingredients (qty, unit, name), and instructions from this image. Fix common OCR mistakes like 112 instead of 1/2.",
+                        image
+                    ]
+                }
+            ]
+        )
+    except Exception as exc:
+        # Surface which model failed — most commonly a retired/unavailable model id
+        # (e.g. Google shut down gemini-2.0-flash-lite on 2026-06-01). Override via
+        # the GEMINI_VISION_MODEL env var without a code change.
+        logger.exception("Vision extraction failed (model=%s)", _MODEL)
+        raise RuntimeError(
+            f"Gemini vision extraction failed for model '{_MODEL}': {exc}"
+        ) from exc
+
     logger.info("Vision extraction succeeded: %s", recipe_data.title)
     return recipe_data

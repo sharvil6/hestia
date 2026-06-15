@@ -91,6 +91,8 @@ if [[ ! -f "$ENV_FILE" ]]; then
   cat > "$ENV_FILE" <<'EOF'
 # Secrets for Hestia services. Loaded by hestia-backend.service via EnvironmentFile.
 GEMINI_API_KEY=
+# Optional: override the Gemini model used for image recipe extraction
+# GEMINI_VISION_MODEL=gemini-2.5-flash-lite
 # Add any auth signing keys / other secrets here.
 EOF
   chmod 640 "$ENV_FILE"
