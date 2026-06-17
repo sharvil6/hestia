@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 import logging
 
 import os
@@ -145,11 +145,25 @@ def ingest_from_scraper(url: str = Form(...), db: Session = Depends(get_db), _us
         raise HTTPException(status_code=422, detail=f"Failed to scrape recipe: {str(e)}")
 
 @router.post("/vision/preview", response_model=schemas.RecipeCreate)
-async def preview_vision(file: UploadFile = File(...), _user=Depends(get_current_user)):
-    """Extract a recipe from an image and return it for client-side review, without saving."""
-    logger.info("Vision preview requested for file: %s (%s)", file.filename, file.content_type)
+async def preview_vision(
+    files: List[UploadFile] = File(default=[]),
+    file: Optional[UploadFile] = File(default=None),
+    _user=Depends(get_current_user),
+):
+    """Extract a recipe from one or more page images and return it for client-side
+    review, without saving. The web client sends multiple `files` (Page 1, Page 2, …)
+    that are consolidated into a single recipe; older clients (mobile) send one `file`."""
+    uploads = list(files)
+    if file is not None:
+        uploads.append(file)
+    if not uploads:
+        raise HTTPException(status_code=422, detail="No image provided.")
+    logger.info(
+        "Vision preview requested for %d page(s): %s",
+        len(uploads), [u.filename for u in uploads],
+    )
     try:
-        contents = await file.read()
+        contents = [await u.read() for u in uploads]
         recipe_schema = extract_recipe_from_image(contents)
         logger.info("Vision preview succeeded: %s", recipe_schema.title)
         return recipe_schema

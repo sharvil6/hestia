@@ -46,11 +46,11 @@ export default function AddRecipeModal({ isOpen, onClose }: AddRecipeModalProps)
   const [urlError, setUrlError] = useState('');
   const [importedUrl, setImportedUrl] = useState('');
 
-  // Photo import state
+  // Photo import state — a recipe can span several pages; each page is one photo
+  // and they're consolidated into a single recipe on scan.
   const [photoStep, setPhotoStep] = useState<PhotoStep>('upload');
-  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPages, setPhotoPages] = useState<{ file: File; previewUrl: string }[]>([]);
   const [photoError, setPhotoError] = useState('');
-  const [photoPreviewUrl, setPhotoPreviewUrl] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
@@ -118,16 +118,22 @@ export default function AddRecipeModal({ isOpen, onClose }: AddRecipeModalProps)
     setUrlError('');
     setImportedUrl('');
     setPhotoStep('upload');
-    setPhotoFile(null);
+    setPhotoPages((prev) => { prev.forEach((p) => URL.revokeObjectURL(p.previewUrl)); return []; });
     setPhotoError('');
-    setPhotoPreviewUrl('');
     setIsDragging(false);
   };
 
-  const handlePhotoSelect = useCallback((file: File) => {
-    setPhotoFile(file);
-    setPhotoPreviewUrl(URL.createObjectURL(file));
+  const handleAddPage = useCallback((file: File) => {
+    setPhotoPages((prev) => [...prev, { file, previewUrl: URL.createObjectURL(file) }]);
     setPhotoError('');
+  }, []);
+
+  const handleRemovePage = useCallback((idx: number) => {
+    setPhotoPages((prev) => {
+      const removed = prev[idx];
+      if (removed) URL.revokeObjectURL(removed.previewUrl);
+      return prev.filter((_, i) => i !== idx);
+    });
   }, []);
 
   const handlePhotoDrop = useCallback((e: React.DragEvent) => {
@@ -135,16 +141,16 @@ export default function AddRecipeModal({ isOpen, onClose }: AddRecipeModalProps)
     setIsDragging(false);
     const file = e.dataTransfer.files[0];
     if (file && file.type.startsWith('image/')) {
-      handlePhotoSelect(file);
+      handleAddPage(file);
     }
-  }, [handlePhotoSelect]);
+  }, [handleAddPage]);
 
   const handlePhotoScan = async () => {
-    if (!photoFile) return;
+    if (photoPages.length === 0) return;
     setPhotoStep('loading');
     setPhotoError('');
     try {
-      const data = await visionRecipePreview(photoFile);
+      const data = await visionRecipePreview(photoPages.map((p) => p.file));
       setTitle(data.title || '');
       setDescription(data.description || '');
       setYieldAmount(data.original_yield || 1);
@@ -462,73 +468,100 @@ export default function AddRecipeModal({ isOpen, onClose }: AddRecipeModalProps)
                     <Camera className="w-7 h-7 text-[#CC5500]" />
                   </div>
                   <h3 className="text-lg font-serif font-medium text-gray-800 mb-1">Scan a Recipe</h3>
-                  <p className="text-sm text-gray-500">Upload a photo of a handwritten or printed recipe card</p>
+                  <p className="text-sm text-gray-500">Add a photo of a handwritten or printed recipe card. If the recipe spans several pages, add one photo per page — they&apos;ll be combined into a single recipe.</p>
                 </div>
 
-                {/* Drag and drop zone */}
+                {/* Hidden input used by the trailing "add the next page" slot */}
                 <input
                   ref={photoInputRef}
                   type="file"
                   accept="image/*"
                   className="hidden"
-                  onChange={(e) => { const f = e.target.files?.[0]; if (f) handlePhotoSelect(f); }}
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) handleAddPage(f); e.target.value = ''; }}
                 />
-                <div
-                  onClick={() => photoStep !== 'loading' && photoInputRef.current?.click()}
-                  onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-                  onDragLeave={() => setIsDragging(false)}
-                  onDrop={handlePhotoDrop}
-                  className={`relative border-2 border-dashed rounded-2xl transition-all cursor-pointer ${
-                    photoStep === 'loading'
-                      ? 'cursor-default border-gray-200 bg-gray-50'
-                      : isDragging
-                      ? 'border-[#CC5500] bg-[#CC5500]/5 scale-[1.01]'
-                      : photoPreviewUrl
-                      ? 'border-[#8A9A5B]/50 bg-[#8A9A5B]/5 hover:border-[#8A9A5B]'
-                      : 'border-gray-200 bg-white hover:border-[#CC5500]/50 hover:bg-[#CC5500]/3'
-                  }`}
-                >
-                  {photoStep === 'loading' ? (
+
+                {photoStep === 'loading' ? (
+                  <div className="relative border-2 border-dashed border-gray-200 bg-gray-50 rounded-2xl">
                     <div className="flex flex-col items-center justify-center py-16 gap-4">
                       <div className="relative">
                         <div className="w-16 h-16 rounded-full border-4 border-[#CC5500]/20 border-t-[#CC5500] animate-spin" />
                         <Camera className="w-6 h-6 text-[#CC5500] absolute inset-0 m-auto" />
                       </div>
                       <div className="text-center">
-                        <p className="text-sm font-medium text-gray-700">Analysing your recipe...</p>
+                        <p className="text-sm font-medium text-gray-700">
+                          Analysing {photoPages.length > 1 ? `${photoPages.length} pages` : 'your recipe'}...
+                        </p>
                         <p className="text-xs text-gray-400 mt-1">Gemini is reading the text</p>
                       </div>
                     </div>
-                  ) : photoPreviewUrl ? (
-                    <div className="relative">
-                      <img
-                        src={photoPreviewUrl}
-                        alt="Recipe photo preview"
-                        className="w-full max-h-64 object-contain rounded-xl"
-                      />
-                      <div className="absolute inset-0 bg-black/0 hover:bg-black/10 rounded-xl transition-colors flex items-center justify-center opacity-0 hover:opacity-100">
-                        <div className="bg-white/90 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-700 flex items-center gap-1.5">
-                          <Upload className="w-3.5 h-3.5" /> Change photo
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {/* Already-added pages */}
+                    {photoPages.map((page, idx) => (
+                      <div key={page.previewUrl} className="relative flex gap-3 items-center border border-[#8A9A5B]/40 bg-[#8A9A5B]/5 rounded-2xl p-3">
+                        <span className="absolute -top-2 left-3 px-2 py-0.5 rounded-full bg-[#8A9A5B] text-white text-[11px] font-medium shadow-sm">
+                          Page {idx + 1}
+                        </span>
+                        <img
+                          src={page.previewUrl}
+                          alt={`Recipe page ${idx + 1}`}
+                          className="w-20 h-20 object-cover rounded-xl border border-[#8A9A5B]/30 shrink-0"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-700 truncate">{page.file.name}</p>
+                          <p className="text-xs text-gray-400 mt-0.5">Page {idx + 1}</p>
                         </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemovePage(idx)}
+                          className="text-gray-300 hover:text-red-500 transition-colors p-1.5 rounded-lg hover:bg-white/60 shrink-0"
+                          aria-label={`Remove page ${idx + 1}`}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+
+                    {/* Trailing slot — the next page to add. Always labelled with the
+                        next page number, and only appears once the previous pages exist. */}
+                    <div
+                      onClick={() => photoInputRef.current?.click()}
+                      onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                      onDragLeave={() => setIsDragging(false)}
+                      onDrop={handlePhotoDrop}
+                      className={`relative border-2 border-dashed rounded-2xl transition-all cursor-pointer ${
+                        isDragging
+                          ? 'border-[#CC5500] bg-[#CC5500]/5 scale-[1.01]'
+                          : 'border-gray-200 bg-white hover:border-[#CC5500]/50 hover:bg-[#CC5500]/3'
+                      }`}
+                    >
+                      <span className="absolute -top-2 left-3 px-2 py-0.5 rounded-full bg-gray-200 text-gray-600 text-[11px] font-medium">
+                        Page {photoPages.length + 1}
+                      </span>
+                      <div className={`flex flex-col items-center justify-center gap-3 ${photoPages.length === 0 ? 'py-14' : 'py-8'}`}>
+                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-colors ${
+                          isDragging ? 'bg-[#CC5500]/20' : 'bg-gray-100'
+                        }`}>
+                          {photoPages.length === 0
+                            ? <Upload className={`w-5 h-5 transition-colors ${isDragging ? 'text-[#CC5500]' : 'text-gray-400'}`} />
+                            : <Plus className={`w-5 h-5 transition-colors ${isDragging ? 'text-[#CC5500]' : 'text-gray-400'}`} />}
+                        </div>
+                        <div className="text-center">
+                          <p className="text-sm font-medium text-gray-700">
+                            {isDragging
+                              ? 'Drop it here!'
+                              : photoPages.length === 0
+                              ? 'Drop the first page here'
+                              : `Add page ${photoPages.length + 1} (optional)`}
+                          </p>
+                          <p className="text-xs text-gray-400 mt-0.5">or click to browse from your device</p>
+                        </div>
+                        {photoPages.length === 0 && <p className="text-xs text-gray-300">JPG, PNG, HEIC, WEBP</p>}
                       </div>
                     </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center py-14 gap-3">
-                      <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-colors ${
-                        isDragging ? 'bg-[#CC5500]/20' : 'bg-gray-100'
-                      }`}>
-                        <Upload className={`w-5 h-5 transition-colors ${isDragging ? 'text-[#CC5500]' : 'text-gray-400'}`} />
-                      </div>
-                      <div className="text-center">
-                        <p className="text-sm font-medium text-gray-700">
-                          {isDragging ? 'Drop it here!' : 'Drop a photo here'}
-                        </p>
-                        <p className="text-xs text-gray-400 mt-0.5">or click to browse from your device</p>
-                      </div>
-                      <p className="text-xs text-gray-300">JPG, PNG, HEIC, WEBP</p>
-                    </div>
-                  )}
-                </div>
+                  </div>
+                )}
 
                 {photoStep === 'error' && (
                   <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
@@ -539,13 +572,13 @@ export default function AddRecipeModal({ isOpen, onClose }: AddRecipeModalProps)
 
                 <button
                   onClick={handlePhotoScan}
-                  disabled={!photoFile || photoStep === 'loading'}
+                  disabled={photoPages.length === 0 || photoStep === 'loading'}
                   className="w-full py-3 bg-[#CC5500] hover:bg-[#aa4700] text-white font-medium rounded-xl shadow-md shadow-[#CC5500]/20 transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   {photoStep === 'loading' ? (
                     <><Loader2 className="w-4 h-4 animate-spin" /> Scanning...</>
                   ) : (
-                    <><Camera className="w-4 h-4" /> Extract Recipe</>
+                    <><Camera className="w-4 h-4" /> {photoPages.length > 1 ? `Extract Recipe (${photoPages.length} pages)` : 'Extract Recipe'}</>
                   )}
                 </button>
               </section>
@@ -556,11 +589,13 @@ export default function AddRecipeModal({ isOpen, onClose }: AddRecipeModalProps)
               <div className="flex items-center gap-3 bg-[#8A9A5B]/10 border border-[#8A9A5B]/25 rounded-xl px-4 py-3">
                 <Camera className="w-4 h-4 text-[#8A9A5B] shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium text-[#8A9A5B]">Extracted from photo</p>
-                  <p className="text-xs text-gray-500 truncate">{photoFile?.name}</p>
+                  <p className="text-xs font-medium text-[#8A9A5B]">
+                    Extracted from {photoPages.length > 1 ? `${photoPages.length} pages` : 'photo'}
+                  </p>
+                  <p className="text-xs text-gray-500 truncate">{photoPages.map((p) => p.file.name).join(', ')}</p>
                 </div>
                 <button
-                  onClick={() => { setPhotoStep('upload'); setPhotoFile(null); setPhotoPreviewUrl(''); }}
+                  onClick={() => { setPhotoStep('upload'); setPhotoPages((prev) => { prev.forEach((p) => URL.revokeObjectURL(p.previewUrl)); return []; }); }}
                   className="text-xs text-gray-400 hover:text-gray-600 whitespace-nowrap ml-2"
                 >
                   Change

@@ -25,8 +25,11 @@ export const uploadRecipeImage = async (file: File) => {
   return apiFetch('/recipes/upload-image', { method: 'POST', body: form });
 };
 
-export const visionRecipePreview = async (file: File) => {
+export const visionRecipePreview = async (files: File | File[]) => {
   const form = new FormData();
-  form.append('file', file);
+  const pages = Array.isArray(files) ? files : [files];
+  // Each page is appended under `files`; the backend consolidates them (in order)
+  // into a single recipe. Page 1 first, Page 2 next, etc.
+  for (const page of pages) form.append('files', page);
   return apiFetch('/recipes/vision/preview', { method: 'POST', body: form });
 };
