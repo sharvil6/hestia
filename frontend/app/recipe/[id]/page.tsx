@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { useState, useRef } from 'react'
 import { getRecipe, addRecipeAnnotation, updateRecipeAnnotation, deleteRecipeAnnotation } from '@/lib/api'
+import { mediaUrl } from '@/lib/media'
 import { useCurrentUserId } from '@/lib/currentUser'
 import {
   ChevronLeft,
@@ -216,7 +217,7 @@ export default function RecipeDetail() {
         {/* Cover image */}
         {recipe.cover_image && (
           <img
-            src={recipe.cover_image}
+            src={mediaUrl(recipe.cover_image)}
             alt={recipe.title}
             style={{
               display: 'block', width: '100%', height: '280px',

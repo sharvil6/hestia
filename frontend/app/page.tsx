@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getRecipes } from '@/lib/api'
+import { mediaUrl } from '@/lib/media'
 import { useCurrentUser } from '@/lib/currentUser'
 import type { Recipe } from '@hestia/shared/types'
 import Link from 'next/link'
@@ -343,7 +344,7 @@ export default function Home() {
                   >
                     {recipe.cover_image && (
                       <img
-                        src={recipe.cover_image}
+                        src={mediaUrl(recipe.cover_image)}
                         alt={recipe.title}
                         style={{
                           display: 'block',

@@ -51,41 +51,50 @@ mkdir -p "$DATA_DIR/db" "$DATA_DIR/uploads" /srv/hestia/frontend-runtime
 mkdir -p /srv/hestia/demo/data/db /srv/hestia/demo/data/uploads /srv/hestia/demo/frontend-runtime
 chown -R "$HESTIA_USER:$HESTIA_USER" /srv/hestia
 
-echo "==> ensuring SSH deploy key for $HESTIA_USER"
-if [[ ! -f "$HESTIA_SSH_KEY" ]]; then
-  sudo -u "$HESTIA_USER" -H mkdir -p "$HESTIA_SSH_DIR"
-  sudo -u "$HESTIA_USER" -H chmod 700 "$HESTIA_SSH_DIR"
-  sudo -u "$HESTIA_USER" -H ssh-keygen -t ed25519 -f "$HESTIA_SSH_KEY" -N "" -C "hestia-deploy@$(hostname)"
-fi
-
-# Pre-trust github.com so the first clone doesn't prompt on stdin.
-if ! sudo -u "$HESTIA_USER" -H grep -q '^github\.com ' "$HESTIA_SSH_DIR/known_hosts" 2>/dev/null; then
-  sudo -u "$HESTIA_USER" -H bash -c "ssh-keyscan -t ed25519,rsa github.com >> '$HESTIA_SSH_DIR/known_hosts'"
-fi
-
-# Verify the deploy key actually authenticates against GitHub before attempting to clone.
-# `ssh -T git@github.com` returns exit 1 on success (GitHub closes the session) — anything else is a failure.
-if ! sudo -u "$HESTIA_USER" -H ssh -o BatchMode=yes -o ConnectTimeout=10 -T git@github.com 2>&1 | grep -qE "successfully authenticated"; then
-  echo
-  echo "  !! GitHub deploy key is NOT registered yet."
-  echo "  !! Add the following PUBLIC key to:"
-  echo "  !!     https://github.com/sharvil6/hestia/settings/keys"
-  echo "  !! (Add deploy key, title 'optiplex', leave 'Allow write access' UNCHECKED.)"
-  echo
-  echo "  -------- PUBLIC KEY --------"
-  sudo cat "$HESTIA_SSH_KEY.pub"
-  echo "  ----------------------------"
-  echo
-  echo "  Then re-run this script: sudo bash $0"
-  exit 1
-fi
-
+# The GitHub deploy-key gate below is only needed to bootstrap the *initial*
+# clone. On an already-provisioned host the repo is present and git already
+# pulls fine, so re-running install.sh (e.g. to install new systemd units) must
+# NOT re-gate on an `ssh -T` probe — that probe is stricter than `git fetch`
+# (it trips on a stale known_hosts host key even when pulls work) and would
+# block legitimate idempotent re-runs.
 if [[ ! -d "$REPO_DIR/.git" ]]; then
+  echo "==> ensuring SSH deploy key for $HESTIA_USER"
+  if [[ ! -f "$HESTIA_SSH_KEY" ]]; then
+    sudo -u "$HESTIA_USER" -H mkdir -p "$HESTIA_SSH_DIR"
+    sudo -u "$HESTIA_USER" -H chmod 700 "$HESTIA_SSH_DIR"
+    sudo -u "$HESTIA_USER" -H ssh-keygen -t ed25519 -f "$HESTIA_SSH_KEY" -N "" -C "hestia-deploy@$(hostname)"
+  fi
+
+  # Pre-trust github.com so the first clone doesn't prompt on stdin.
+  if ! sudo -u "$HESTIA_USER" -H grep -q '^github\.com ' "$HESTIA_SSH_DIR/known_hosts" 2>/dev/null; then
+    sudo -u "$HESTIA_USER" -H bash -c "ssh-keyscan -t ed25519,rsa github.com >> '$HESTIA_SSH_DIR/known_hosts'"
+  fi
+
+  # Verify the deploy key actually authenticates against GitHub before attempting to clone.
+  # `ssh -T git@github.com` returns exit 1 on success (GitHub closes the session) — anything else is a failure.
+  if ! sudo -u "$HESTIA_USER" -H ssh -o BatchMode=yes -o ConnectTimeout=10 -T git@github.com 2>&1 | grep -qE "successfully authenticated"; then
+    echo
+    echo "  !! GitHub deploy key is NOT registered yet."
+    echo "  !! Add the following PUBLIC key to:"
+    echo "  !!     https://github.com/sharvil6/hestia/settings/keys"
+    echo "  !! (Add deploy key, title 'optiplex', leave 'Allow write access' UNCHECKED.)"
+    echo
+    echo "  -------- PUBLIC KEY --------"
+    sudo cat "$HESTIA_SSH_KEY.pub"
+    echo "  ----------------------------"
+    echo
+    echo "  Then re-run this script: sudo bash $0"
+    exit 1
+  fi
+
   echo "==> cloning repo via SSH"
   sudo -u "$HESTIA_USER" -H git clone "$REPO_SSH_URL" "$REPO_DIR"
-elif sudo -u "$HESTIA_USER" -H git -C "$REPO_DIR" remote get-url origin | grep -q '^https://'; then
-  echo "==> migrating existing repo origin from HTTPS to SSH"
-  sudo -u "$HESTIA_USER" -H git -C "$REPO_DIR" remote set-url origin "$REPO_SSH_URL"
+else
+  echo "==> repo already present at $REPO_DIR — skipping GitHub deploy-key gate"
+  if sudo -u "$HESTIA_USER" -H git -C "$REPO_DIR" remote get-url origin | grep -q '^https://'; then
+    echo "==> migrating existing repo origin from HTTPS to SSH"
+    sudo -u "$HESTIA_USER" -H git -C "$REPO_DIR" remote set-url origin "$REPO_SSH_URL"
+  fi
 fi
 
 if [[ ! -f "$ENV_FILE" ]]; then
