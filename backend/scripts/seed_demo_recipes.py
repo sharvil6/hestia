@@ -59,20 +59,19 @@ def _resolve_tags(db, tag_names, cache):
 
 
 def _generate_cover(slug: str, title: str, color: str) -> str:
-    """Render a simple coloured cover card with the title and return its
-    /images/... URL. Overwrites any existing file with the same stable name."""
+    """Render a simple coloured cover card with the title centred, and return its
+    /images/... URL. Overwrites any existing file with the same stable name.
+
+    The title is centred both axes (not in a bottom band) so it survives the
+    `object-fit: cover` crop the frontend applies to short, wide card thumbnails."""
     from PIL import Image, ImageDraw, ImageFont
 
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     W, H = 800, 500
-    img = Image.new("RGB", (W, H), color)
+    base = Image.new("RGB", (W, H), color)
+    # Darken the whole card slightly so white text reads on any base colour.
+    img = Image.blend(base, Image.new("RGB", (W, H), (0, 0, 0)), 0.20)
     draw = ImageDraw.Draw(img)
-
-    # Subtle darker band along the bottom for the title to sit on.
-    band_top = int(H * 0.68)
-    draw.rectangle([0, band_top, W, H], fill=(0, 0, 0))
-    band = Image.new("RGB", (W, H - band_top), color)
-    img.paste(Image.blend(band, Image.new("RGB", band.size, (0, 0, 0)), 0.45), (0, band_top))
 
     def _font(size: int):
         for name in ("DejaVuSans-Bold.ttf", "DejaVuSans.ttf", "Arial.ttf", "arial.ttf"):
@@ -85,13 +84,15 @@ def _generate_cover(slug: str, title: str, color: str) -> str:
         except TypeError:
             return ImageFont.load_default()
 
-    font = _font(44)
+    font = _font(52)
+    margin = 70
+    max_w = W - 2 * margin
     # Word-wrap the title to fit the width.
     words = title.split()
     lines, line = [], ""
     for w in words:
         trial = (line + " " + w).strip()
-        if draw.textlength(trial, font=font) <= W - 80:
+        if draw.textlength(trial, font=font) <= max_w:
             line = trial
         else:
             if line:
@@ -100,11 +101,16 @@ def _generate_cover(slug: str, title: str, color: str) -> str:
     if line:
         lines.append(line)
 
-    y = band_top + 28
+    # Use font metrics for a uniform line height, then centre the whole block.
+    ascent, descent = font.getmetrics()
+    line_h = ascent + descent
+    gap = 14
+    total_h = len(lines) * line_h + (len(lines) - 1) * gap
+    y = (H - total_h) // 2
     for ln in lines:
-        draw.text((40, y), ln, fill=(255, 255, 255), font=font)
-        bbox = draw.textbbox((0, 0), ln, font=font)
-        y += (bbox[3] - bbox[1]) + 10
+        w = draw.textlength(ln, font=font)
+        draw.text(((W - w) // 2, y), ln, fill=(255, 255, 255), font=font)
+        y += line_h + gap
 
     filename = f"demo-{slug}.jpg"
     img.save(os.path.join(UPLOAD_DIR, filename), "JPEG", quality=88)
