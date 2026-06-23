@@ -4,7 +4,10 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-const SESSION_COOKIE = 'hestia_session'
+// Configurable so the separate demo deployment can use a distinct cookie name
+// (hestia_demo_session) — both sites live under .sharvilpatel.dev, so a shared
+// name would let the demo clobber a real prod session and vice versa.
+const SESSION_COOKIE = process.env.NEXT_PUBLIC_SESSION_COOKIE || 'hestia_session'
 
 // Anything matched here that lacks the session cookie redirects to /login.
 // We list public paths explicitly and treat everything else as protected.

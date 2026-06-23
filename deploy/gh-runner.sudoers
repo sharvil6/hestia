@@ -6,5 +6,9 @@
 gh-runner ALL=(hestia) NOPASSWD: /bin/bash /srv/hestia/repo/deploy/deploy.sh
 gh-runner ALL=(root)   NOPASSWD: /usr/bin/systemctl restart hestia-backend.service
 gh-runner ALL=(root)   NOPASSWD: /usr/bin/systemctl restart hestia-frontend.service
+gh-runner ALL=(root)   NOPASSWD: /usr/bin/systemctl restart hestia-demo-backend.service
+gh-runner ALL=(root)   NOPASSWD: /usr/bin/systemctl restart hestia-demo-frontend.service
 gh-runner ALL=(root)   NOPASSWD: /usr/bin/journalctl -u hestia-backend.service *
 gh-runner ALL=(root)   NOPASSWD: /usr/bin/journalctl -u hestia-frontend.service *
+gh-runner ALL=(root)   NOPASSWD: /usr/bin/journalctl -u hestia-demo-backend.service *
+gh-runner ALL=(root)   NOPASSWD: /usr/bin/journalctl -u hestia-demo-frontend.service *

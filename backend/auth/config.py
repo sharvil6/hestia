@@ -29,6 +29,14 @@ SESSION_TTL_DAYS = _env_int("HESTIA_SESSION_TTL_DAYS", 30)
 INVITE_TTL_DAYS = _env_int("HESTIA_INVITE_TTL_DAYS", 7)
 CHALLENGE_TTL_SECONDS = _env_int("HESTIA_CHALLENGE_TTL_SECONDS", 300)
 
+# Demo mode: when on, the two Gemini-vision endpoints are disabled and an
+# anonymous one-click /auth/demo-login is enabled. Only ever set on the separate
+# demo deployment, which runs against its own throwaway DB — never in prod.
+DEMO_MODE = _env_bool("HESTIA_DEMO_MODE", False)
+# Stable id for the shared demo account so seed/reset scripts and /auth/demo-login
+# agree on which user to use, without needing a schema flag.
+DEMO_USER_ID = _env("HESTIA_DEMO_USER_ID", "demo")
+
 # WebAuthn relying-party config.
 # RP_ID must be the registrable domain (no scheme, no port). localhost is allowed in dev.
 RP_ID = _env("HESTIA_RP_ID", "localhost")

@@ -104,6 +104,15 @@ from fastapi import UploadFile, File, Form
 from services.vision import extract_recipe_from_image
 from services.scraper import scrape_recipe_from_url
 from sqlalchemy import text
+from auth import config as auth_config
+
+
+def _guard_demo_llm() -> None:
+    """In demo mode the Gemini-vision paths are off — there's no API key on the
+    demo box and we don't want anonymous visitors burning quota. Manual add and
+    URL scrape (no LLM) stay available."""
+    if auth_config.DEMO_MODE:
+        raise HTTPException(status_code=403, detail="AI extraction is disabled in the demo.")
 try:
     from recipe_scrapers.exceptions import NoSchemaFoundInWildMode
 except ImportError:
@@ -153,6 +162,7 @@ async def preview_vision(
     """Extract a recipe from one or more page images and return it for client-side
     review, without saving. The web client sends multiple `files` (Page 1, Page 2, …)
     that are consolidated into a single recipe; older clients (mobile) send one `file`."""
+    _guard_demo_llm()
     uploads = list(files)
     if file is not None:
         uploads.append(file)
@@ -173,6 +183,7 @@ async def preview_vision(
 
 @router.post("/ingest/image", response_model=schemas.RecipeResponse)
 async def ingest_from_vision(file: UploadFile = File(...), db: Session = Depends(get_db), _user=Depends(get_current_user)):
+    _guard_demo_llm()
     contents = await file.read()
     recipe_schema = extract_recipe_from_image(contents)
     return create_recipe(recipe_schema, db)

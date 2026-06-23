@@ -12,6 +12,7 @@ set -euo pipefail
 
 REPO_DIR="/srv/hestia/repo"
 RUNTIME_DIR="/srv/hestia/frontend-runtime"
+DEMO_RUNTIME_DIR="/srv/hestia/demo/frontend-runtime"
 VENV="$REPO_DIR/backend/.venv"
 
 cd "$REPO_DIR"
@@ -31,7 +32,9 @@ new_sha="$(git rev-parse HEAD)"
 # time, not while chasing a ghost in prod three hours later.
 echo "==> Verifying systemd unit files are in sync"
 unit_drift=false
-for unit in hestia-backend.service hestia-frontend.service; do
+for unit in hestia-backend.service hestia-frontend.service \
+            hestia-demo-backend.service hestia-demo-frontend.service \
+            hestia-demo-reset.service hestia-demo-reset.timer; do
   repo_file="$REPO_DIR/deploy/$unit"
   installed_file="/etc/systemd/system/$unit"
   if [[ ! -f "$installed_file" ]]; then
@@ -98,19 +101,35 @@ else
 fi
 
 # -------- Frontend --------
-if $frontend_changed || [[ ! -d "$RUNTIME_DIR/frontend" ]]; then
-  echo "==> Building frontend"
+# A small helper: stage the just-built standalone bundle from frontend/.next into
+# a runtime dir. The build writes to frontend/.next each time, so we must stage
+# immediately after each build, before the next build overwrites it.
+stage_runtime() {
+  local dest="$1"
+  echo "==> Staging standalone runtime at $dest"
+  mkdir -p "$dest"
+  rsync -a --delete frontend/.next/standalone/ "$dest/"
+  mkdir -p "$dest/frontend/.next"
+  rsync -a --delete frontend/.next/static/ "$dest/frontend/.next/static/"
+  rsync -a --delete frontend/public/       "$dest/frontend/public/"
+}
+
+if $frontend_changed || [[ ! -d "$RUNTIME_DIR/frontend" ]] || [[ ! -d "$DEMO_RUNTIME_DIR/frontend" ]]; then
+  echo "==> Building frontend (prod)"
   npm ci
   # NEXT_PUBLIC_* must be set at build time (Next inlines them into the bundle).
   # Single-level subdomain — Cloudflare's free Universal SSL only covers one level deep.
   NEXT_PUBLIC_API_URL="https://hestia-api.sharvilpatel.dev" npm run build -w frontend
+  stage_runtime "$RUNTIME_DIR"
 
-  echo "==> Staging standalone runtime at $RUNTIME_DIR"
-  mkdir -p "$RUNTIME_DIR"
-  rsync -a --delete frontend/.next/standalone/ "$RUNTIME_DIR/"
-  mkdir -p "$RUNTIME_DIR/frontend/.next"
-  rsync -a --delete frontend/.next/static/ "$RUNTIME_DIR/frontend/.next/static/"
-  rsync -a --delete frontend/public/       "$RUNTIME_DIR/frontend/public/"
+  echo "==> Building frontend (demo)"
+  # Same source, different inlined config: demo points at the demo API, turns on
+  # demo affordances, and reads a distinct session cookie name (see proxy.ts).
+  NEXT_PUBLIC_API_URL="https://hestia-demo-api.sharvilpatel.dev" \
+    NEXT_PUBLIC_DEMO_MODE="1" \
+    NEXT_PUBLIC_SESSION_COOKIE="hestia_demo_session" \
+    npm run build -w frontend
+  stage_runtime "$DEMO_RUNTIME_DIR"
 else
   echo "==> Frontend unchanged, skipping build"
 fi

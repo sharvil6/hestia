@@ -85,6 +85,11 @@ export const authMe = () => apiFetch('/auth/me');
 export const authLogout = () =>
   apiFetch('/auth/logout', { method: 'POST' });
 
+// One-click sign-in for the public demo deployment. The backend only honours
+// this when HESTIA_DEMO_MODE is set (404 otherwise).
+export const authDemoLogin = () =>
+  apiFetch('/auth/demo-login', { method: 'POST' });
+
 export const authLoginWithWords = (words: string[]) =>
   apiFetch('/auth/login', {
     method: 'POST',

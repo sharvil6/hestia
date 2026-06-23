@@ -3,6 +3,7 @@ import { X, Plus, Trash2, Clock, Users, BookOpen, Link2, PenLine, Loader2, Alert
 import { createRecipe, scrapeRecipePreview, uploadRecipeImage, visionRecipePreview } from '@/lib/api';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import TagInput from '@/components/TagInput';
+import { DEMO_MODE } from '@/lib/demo';
 
 interface AddRecipeModalProps {
   isOpen: boolean;
@@ -363,17 +364,20 @@ export default function AddRecipeModal({ isOpen, onClose }: AddRecipeModalProps)
                 <Link2 className="w-4 h-4" />
                 From URL
               </button>
-              <button
-                onClick={() => setTabMode('photo')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200 ${
-                  tabMode === 'photo'
-                    ? 'bg-white text-[#CC5500] shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <Camera className="w-4 h-4" />
-                Scan Photo
-              </button>
+              {/* AI photo scanning calls Gemini — disabled on the public demo. */}
+              {!DEMO_MODE && (
+                <button
+                  onClick={() => setTabMode('photo')}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200 ${
+                    tabMode === 'photo'
+                      ? 'bg-white text-[#CC5500] shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  <Camera className="w-4 h-4" />
+                  Scan Photo
+                </button>
+              )}
             </div>
           </div>
 

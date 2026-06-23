@@ -266,6 +266,25 @@ def login_with_words(
     return LoginSuccess(user=UserOut.of(user), session_token=token)
 
 
+@router.post("/demo-login", response_model=LoginSuccess)
+def demo_login(
+    request: Request,
+    response: Response,
+    db: DBSession = Depends(get_db),
+):
+    """One-click sign-in for the public demo. No credentials: it only ever logs
+    into the shared, low-privilege demo account, which exists solely in the demo
+    deployment's throwaway DB. Disabled (404) unless HESTIA_DEMO_MODE is set, so
+    this can never mint a session in prod even if the route is reachable."""
+    if not config.DEMO_MODE:
+        raise HTTPException(status_code=404, detail="not found")
+    user = db.query(User).filter(User.id == config.DEMO_USER_ID).first()
+    if user is None:
+        raise HTTPException(status_code=503, detail="demo not initialised")
+    _, token = _mint_session(db, response, request, user, auth_method="demo")
+    return LoginSuccess(user=UserOut.of(user), session_token=token)
+
+
 @router.post("/logout")
 def logout(
     response: Response,

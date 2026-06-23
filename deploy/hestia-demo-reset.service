@@ -1,0 +1,20 @@
+[Unit]
+Description=Reset the Hestia demo DB to its seeded state
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=hestia
+Group=hestia
+WorkingDirectory=/srv/hestia/repo/backend
+Environment=HESTIA_DEMO_MODE=1
+Environment=DB_DIR=/srv/hestia/demo/data/db
+Environment=UPLOAD_DIR=/srv/hestia/demo/data/uploads
+ExecStart=/srv/hestia/repo/backend/.venv/bin/python -m scripts.reset_demo
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/srv/hestia/demo/data

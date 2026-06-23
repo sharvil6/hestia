@@ -2,8 +2,9 @@
 
 import { Suspense, useEffect, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Flame, KeyRound, QrCode, Hash, Loader2 } from 'lucide-react'
-import { authLoginWithQr, authLoginWithWords } from '@/lib/api'
+import { Flame, KeyRound, QrCode, Hash, Loader2, Sparkles } from 'lucide-react'
+import { authDemoLogin, authLoginWithQr, authLoginWithWords } from '@/lib/api'
+import { DEMO_MODE } from '@/lib/demo'
 import {
   bip39Suggestions,
   isBip39Word,
@@ -45,6 +46,19 @@ function Login() {
     setPasskeyOk(ok)
     if (ok) setTab('passkey')
   }, [])
+
+  async function onDemo() {
+    setError(null); setBusy(true)
+    try {
+      await authDemoLogin()
+      await invalidate()
+      router.push(next)
+    } catch (e) {
+      setError((e as Error).message || 'Could not start the demo')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   async function onPasskey() {
     setError(null); setBusy(true)
@@ -109,6 +123,35 @@ function Login() {
           padding: '24px',
           boxShadow: 'var(--shadow-sm)',
         }}>
+          {DEMO_MODE && (
+            <div style={{ marginBottom: 20 }}>
+              <button type="button" onClick={onDemo} disabled={busy}
+                style={{
+                  width: '100%', padding: '12px 16px',
+                  background: busy ? 'var(--color-ink-disabled)' : 'var(--color-brand)',
+                  color: 'white', border: 'none', borderRadius: 'var(--radius-md)',
+                  fontFamily: 'var(--font-body)', fontWeight: 500, fontSize: 15,
+                  cursor: busy ? 'not-allowed' : 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  boxShadow: busy ? 'none' : 'var(--shadow-brand)',
+                }}>
+                {busy ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} strokeWidth={2} />}
+                Try the demo
+              </button>
+              <p style={{ marginTop: 8, fontSize: 12, color: 'var(--color-ink-muted)', textAlign: 'center' }}>
+                Jump in with sample recipes — no account needed.
+              </p>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 12, margin: '16px 0 4px',
+                color: 'var(--color-ink-muted)', fontSize: 12,
+              }}>
+                <span style={{ flex: 1, height: 1, background: 'var(--color-border-subtle)' }} />
+                or sign in
+                <span style={{ flex: 1, height: 1, background: 'var(--color-border-subtle)' }} />
+              </div>
+            </div>
+          )}
+
           <Tabs current={tab} onChange={setTab} passkeyOk={passkeyOk} />
 
           {tab === 'passkey' && (

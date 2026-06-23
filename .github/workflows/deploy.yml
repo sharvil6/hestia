@@ -86,6 +86,8 @@ jobs:
         run: |
           sudo -n /usr/bin/systemctl restart hestia-backend.service
           sudo -n /usr/bin/systemctl restart hestia-frontend.service
+          sudo -n /usr/bin/systemctl restart hestia-demo-backend.service
+          sudo -n /usr/bin/systemctl restart hestia-demo-frontend.service
 
       - name: Backend health check
         run: |
@@ -112,6 +114,30 @@ jobs:
           done
           echo "Frontend failed to become healthy within 60s" >&2
           sudo -n /usr/bin/journalctl -u hestia-frontend.service -n 50 --no-pager >&2
+          exit 1
+
+      - name: Demo backend health check
+        run: |
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:8001/health >/dev/null 2>&1; then
+              echo "demo backend OK after ${i} attempt(s)"; exit 0
+            fi
+            sleep 2
+          done
+          echo "Demo backend failed to become healthy within 60s" >&2
+          sudo -n /usr/bin/journalctl -u hestia-demo-backend.service -n 50 --no-pager >&2
+          exit 1
+
+      - name: Demo frontend health check
+        run: |
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:3001/ >/dev/null 2>&1; then
+              echo "demo frontend OK after ${i} attempt(s)"; exit 0
+            fi
+            sleep 2
+          done
+          echo "Demo frontend failed to become healthy within 60s" >&2
+          sudo -n /usr/bin/journalctl -u hestia-demo-frontend.service -n 50 --no-pager >&2
           exit 1
 
   mobile-publish:

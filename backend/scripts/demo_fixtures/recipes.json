@@ -1,0 +1,144 @@
+[
+  {
+    "slug": "weeknight-tomato-pasta",
+    "title": "Weeknight Tomato Pasta",
+    "description": "A 20-minute pantry pasta that tastes like you fussed. Sweet garlic, a tin of good tomatoes, and a glug of olive oil.",
+    "color": "#C0492B",
+    "original_yield": 4,
+    "prep_time": 10,
+    "cook_time": 20,
+    "tags": ["pasta", "italian", "weeknight", "vegetarian"],
+    "ingredients": [
+      {"qty": 400, "unit": "g", "item": "spaghetti", "note": ""},
+      {"qty": 4, "unit": "", "item": "garlic cloves", "note": "thinly sliced"},
+      {"qty": 3, "unit": "tbsp", "item": "olive oil", "note": "extra virgin"},
+      {"qty": 1, "unit": "can", "item": "whole peeled tomatoes", "note": "400g"},
+      {"qty": 0.5, "unit": "tsp", "item": "chili flakes", "note": ""},
+      {"qty": 1, "unit": "handful", "item": "basil leaves", "note": "torn"}
+    ],
+    "instructions": [
+      {"step_number": 1, "text": "Bring a large pot of salted water to the boil and cook the spaghetti until just shy of al dente."},
+      {"step_number": 2, "text": "Meanwhile, warm the olive oil over medium-low heat and gently fry the garlic and chili flakes until fragrant but not browned."},
+      {"step_number": 3, "text": "Add the tomatoes, crushing them with a spoon. Simmer 10 minutes until thickened, seasoning with salt."},
+      {"step_number": 4, "text": "Drain the pasta, reserving a cup of water. Toss the pasta through the sauce with a splash of the water to emulsify. Finish with basil."}
+    ]
+  },
+  {
+    "slug": "brown-butter-chocolate-chip-cookies",
+    "title": "Brown Butter Chocolate Chip Cookies",
+    "description": "Nutty browned butter and a long rest give these deep toffee notes and crackly tops. Worth the wait.",
+    "color": "#8B5A2B",
+    "original_yield": 24,
+    "prep_time": 25,
+    "cook_time": 12,
+    "tags": ["dessert", "baking", "cookies"],
+    "ingredients": [
+      {"qty": 226, "unit": "g", "item": "unsalted butter", "note": ""},
+      {"qty": 200, "unit": "g", "item": "brown sugar", "note": "packed"},
+      {"qty": 100, "unit": "g", "item": "white sugar", "note": ""},
+      {"qty": 2, "unit": "", "item": "eggs", "note": "room temperature"},
+      {"qty": 2, "unit": "tsp", "item": "vanilla extract", "note": ""},
+      {"qty": 280, "unit": "g", "item": "all-purpose flour", "note": ""},
+      {"qty": 1, "unit": "tsp", "item": "baking soda", "note": ""},
+      {"qty": 250, "unit": "g", "item": "dark chocolate", "note": "chopped"}
+    ],
+    "instructions": [
+      {"step_number": 1, "text": "Brown the butter in a saucepan until it smells nutty and turns amber. Cool 10 minutes."},
+      {"step_number": 2, "text": "Whisk the butter with both sugars, then beat in the eggs and vanilla until glossy."},
+      {"step_number": 3, "text": "Fold in the flour and baking soda, then the chocolate. Chill the dough at least 1 hour (overnight is better)."},
+      {"step_number": 4, "text": "Scoop onto lined trays and bake at 180C for 11-13 minutes until the edges set but centres look underdone."}
+    ]
+  },
+  {
+    "slug": "smoky-black-bean-tacos",
+    "title": "Smoky Black Bean Tacos",
+    "description": "Crispy-edged black beans with chipotle, lime, and quick-pickled onion. A reliable Tuesday.",
+    "color": "#3E5641",
+    "original_yield": 4,
+    "prep_time": 15,
+    "cook_time": 15,
+    "tags": ["mexican", "vegetarian", "weeknight", "tacos"],
+    "ingredients": [
+      {"qty": 2, "unit": "can", "item": "black beans", "note": "drained"},
+      {"qty": 1, "unit": "", "item": "red onion", "note": "thinly sliced"},
+      {"qty": 1, "unit": "", "item": "lime", "note": "juiced"},
+      {"qty": 2, "unit": "tsp", "item": "chipotle in adobo", "note": "minced"},
+      {"qty": 1, "unit": "tsp", "item": "ground cumin", "note": ""},
+      {"qty": 8, "unit": "", "item": "corn tortillas", "note": "warmed"},
+      {"qty": 1, "unit": "", "item": "avocado", "note": "sliced"}
+    ],
+    "instructions": [
+      {"step_number": 1, "text": "Toss the sliced onion with the lime juice and a pinch of salt; set aside to quick-pickle."},
+      {"step_number": 2, "text": "Fry the beans in oil over high heat with the cumin and chipotle until the edges crisp, mashing some for texture."},
+      {"step_number": 3, "text": "Pile the beans onto warm tortillas. Top with avocado and the pickled onion."}
+    ]
+  },
+  {
+    "slug": "lemony-greek-chicken-soup",
+    "title": "Lemony Greek Chicken Soup",
+    "description": "Avgolemono — silky egg-and-lemon broth with orzo and shredded chicken. Comfort in a bowl.",
+    "color": "#D9A441",
+    "original_yield": 6,
+    "prep_time": 15,
+    "cook_time": 30,
+    "tags": ["soup", "greek", "chicken", "comfort"],
+    "ingredients": [
+      {"qty": 1.5, "unit": "l", "item": "chicken stock", "note": ""},
+      {"qty": 200, "unit": "g", "item": "orzo", "note": ""},
+      {"qty": 2, "unit": "cups", "item": "cooked chicken", "note": "shredded"},
+      {"qty": 3, "unit": "", "item": "eggs", "note": ""},
+      {"qty": 2, "unit": "", "item": "lemons", "note": "juiced"},
+      {"qty": 1, "unit": "handful", "item": "dill", "note": "chopped"}
+    ],
+    "instructions": [
+      {"step_number": 1, "text": "Bring the stock to a simmer and cook the orzo until tender. Stir in the shredded chicken."},
+      {"step_number": 2, "text": "Whisk the eggs with the lemon juice. Slowly ladle in a cup of hot broth while whisking constantly to temper."},
+      {"step_number": 3, "text": "Pour the egg mixture back into the pot off the heat, stirring until silky. Do not boil. Finish with dill and pepper."}
+    ]
+  },
+  {
+    "slug": "sheet-pan-harissa-salmon",
+    "title": "Sheet-Pan Harissa Salmon",
+    "description": "Salmon and chickpeas roasted on one tray with harissa and lemon. Dinner with one pan to wash.",
+    "color": "#B23A2E",
+    "original_yield": 4,
+    "prep_time": 10,
+    "cook_time": 20,
+    "tags": ["seafood", "sheet-pan", "weeknight", "healthy"],
+    "ingredients": [
+      {"qty": 4, "unit": "", "item": "salmon fillets", "note": ""},
+      {"qty": 1, "unit": "can", "item": "chickpeas", "note": "drained"},
+      {"qty": 2, "unit": "tbsp", "item": "harissa paste", "note": ""},
+      {"qty": 2, "unit": "tbsp", "item": "olive oil", "note": ""},
+      {"qty": 1, "unit": "", "item": "lemon", "note": "halved"},
+      {"qty": 1, "unit": "handful", "item": "parsley", "note": "chopped"}
+    ],
+    "instructions": [
+      {"step_number": 1, "text": "Heat the oven to 220C. Toss the chickpeas with half the harissa and the oil on a sheet pan; roast 10 minutes."},
+      {"step_number": 2, "text": "Rub the salmon with the remaining harissa, nestle it among the chickpeas, and add the lemon halves cut-side down."},
+      {"step_number": 3, "text": "Roast 10-12 minutes until the salmon flakes. Squeeze over the roasted lemon and scatter with parsley."}
+    ]
+  },
+  {
+    "slug": "overnight-oats-three-ways",
+    "title": "Overnight Oats, Three Ways",
+    "description": "A base recipe plus three flavour riffs. Five minutes the night before, breakfast sorted all week.",
+    "color": "#7A6C53",
+    "original_yield": 1,
+    "prep_time": 5,
+    "cook_time": 0,
+    "tags": ["breakfast", "make-ahead", "vegetarian", "no-cook"],
+    "ingredients": [
+      {"qty": 0.5, "unit": "cup", "item": "rolled oats", "note": ""},
+      {"qty": 0.5, "unit": "cup", "item": "milk of choice", "note": ""},
+      {"qty": 2, "unit": "tbsp", "item": "yogurt", "note": ""},
+      {"qty": 1, "unit": "tsp", "item": "chia seeds", "note": ""},
+      {"qty": 1, "unit": "tsp", "item": "maple syrup", "note": ""}
+    ],
+    "instructions": [
+      {"step_number": 1, "text": "Stir everything together in a jar, cover, and refrigerate overnight."},
+      {"step_number": 2, "text": "Apple-cinnamon: add grated apple and a pinch of cinnamon. Berry: fold in mashed berries. PB-banana: swirl in peanut butter and sliced banana."},
+      {"step_number": 3, "text": "Top with anything crunchy in the morning and eat cold."}
+    ]
+  }
+]

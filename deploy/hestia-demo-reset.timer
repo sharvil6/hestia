@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily reset of the Hestia demo DB
+
+[Timer]
+# Reset every day at 04:00 local time, so visitors always find a clean sandbox
+# in the morning. Persistent=true runs a missed reset after downtime.
+OnCalendar=*-*-* 04:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

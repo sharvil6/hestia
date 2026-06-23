@@ -97,6 +97,17 @@ Persistent data lives at `/srv/hestia/data/` on the VM (SQLite + uploaded images
 | Backup right now | `sudo -u hestia sqlite3 /srv/hestia/data/db/hestia.db ".backup '/srv/hestia/backups/manual-$(date +%F-%H%M).db'"` |
 | Disk usage | `du -sh /srv/hestia/*` |
 
+### Public demo deployment
+
+A separate, public demo runs **the same code from the same repo/branch** as a second pair of services, switched into demo behavior by env flags and pointed at its own throwaway DB. It updates automatically on every deploy — there is no demo fork to maintain.
+
+- Hostnames: `https://hestia-demo.sharvilpatel.dev` → demo frontend (`127.0.0.1:3001`), `https://hestia-demo-api.sharvilpatel.dev` → demo backend (`127.0.0.1:8001`).
+- Backend: `HESTIA_DEMO_MODE=1` disables the two Gemini-vision endpoints (403) and enables credential-free `POST /auth/demo-login` into the shared `Demo Guest` account. Own data dir at `/srv/hestia/demo/data/`.
+- Frontend: built a second time in [deploy/deploy.sh](deploy/deploy.sh) with `NEXT_PUBLIC_DEMO_MODE=1` (shows the "Try the demo" button + banner, hides AI photo scan) and `NEXT_PUBLIC_SESSION_COOKIE=hestia_demo_session`.
+- Seed/reset: `scripts.create_demo` + `scripts.seed_demo_recipes` populate it; the `hestia-demo-reset.timer` runs `scripts.reset_demo` daily to wipe + re-seed (sandbox the public can poke at).
+
+Demo ops (run on the VM): `sudo systemctl restart hestia-demo-backend hestia-demo-frontend` · `sudo journalctl -u hestia-demo-backend -f` · force a reset now: `sudo systemctl start hestia-demo-reset.service`.
+
 ### Files that govern the prod stack
 
 - [deploy/install.sh](deploy/install.sh) — one-time host bootstrap (idempotent)
@@ -111,3 +122,5 @@ Persistent data lives at `/srv/hestia/data/` on the VM (SQLite + uploaded images
 - **`NEXT_PUBLIC_*` env vars are inlined at build time** — changing the backend URL means editing `deploy/deploy.sh` and triggering a frontend rebuild, not just restarting the service.
 - **CORS_ORIGINS in [deploy/hestia-backend.service](deploy/hestia-backend.service)** must match the frontend's public hostname exactly. If you ever change the frontend hostname, change both.
 - **Stick to single-level subdomains under `sharvilpatel.dev`** unless you want to pay for Cloudflare Advanced Certificate Manager.
+- **The demo must use a distinct session cookie name (`hestia_demo_session`).** The cookie is scoped to `.sharvilpatel.dev`, so if the demo reused `hestia_session` it would clobber a real prod login (and vice versa). It's set in two places that must agree: `HESTIA_COOKIE_NAME` in [deploy/hestia-demo-backend.service](deploy/hestia-demo-backend.service) and `NEXT_PUBLIC_SESSION_COOKIE` in the demo build in [deploy/deploy.sh](deploy/deploy.sh) (read by [frontend/proxy.ts](frontend/proxy.ts)).
+- **New demo systemd units require running `install.sh` before the next deploy.** `deploy.sh`'s unit-drift guard now includes the four `hestia-demo-*` units and will refuse to deploy until they're installed in `/etc/systemd/system/`.
