@@ -78,6 +78,20 @@ export const updateRecipeAnnotation = (annotationId: string, formData: FormData)
 export const deleteRecipeAnnotation = (annotationId: string) =>
   apiFetch(`/recipes/annotations/${annotationId}`, { method: 'DELETE' });
 
+// ----- Public sharing --------------------------------------------------------
+
+// Enable sharing (idempotent) — returns { share_token }.
+export const shareRecipe = (recipeId: string) =>
+  apiFetch(`/recipes/${recipeId}/share`, { method: 'POST' });
+
+// Revoke the public link — returns { share_token: null }.
+export const unshareRecipe = (recipeId: string) =>
+  apiFetch(`/recipes/${recipeId}/share`, { method: 'DELETE' });
+
+// Unauthenticated read of a shared recipe by its token (read-only, no private comments).
+export const getPublicRecipe = (shareToken: string) =>
+  apiFetch(`/recipes/public/${encodeURIComponent(shareToken)}`);
+
 // ----- Auth ------------------------------------------------------------------
 
 export const authMe = () => apiFetch('/auth/me');

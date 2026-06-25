@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { useState, useRef } from 'react'
-import { getRecipe, addRecipeAnnotation, updateRecipeAnnotation, deleteRecipeAnnotation } from '@/lib/api'
+import { getRecipe, addRecipeAnnotation, updateRecipeAnnotation, deleteRecipeAnnotation, shareRecipe, unshareRecipe } from '@/lib/api'
 import { mediaUrl } from '@/lib/media'
 import { useCurrentUserId } from '@/lib/currentUser'
 import {
@@ -21,6 +21,9 @@ import {
   Check,
   NotebookPen,
   ExternalLink,
+  Share2,
+  Copy,
+  Link2,
 } from 'lucide-react'
 import EditRecipeModal from '@/components/EditRecipeModal'
 
@@ -56,6 +59,7 @@ interface Recipe {
   original_yield?: number; prep_time?: number; cook_time?: number; source_url?: string
   ingredients: Ingredient[]; instructions: Instruction[]
   tags: { id: string; name: string }[]; annotations: Annotation[]
+  share_token?: string | null
 }
 
 /* ── Skeleton ──────────────────────────────────────────────── */
@@ -98,6 +102,11 @@ export default function RecipeDetail() {
   const [editNoteImage, setEditNoteImage] = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  const [isShareOpen, setIsShareOpen] = useState(false)
+  // undefined = "not touched this session, fall back to server value"
+  const [shareTokenOverride, setShareTokenOverride] = useState<string | null | undefined>(undefined)
+  const [copied, setCopied] = useState(false)
+
   const { data: recipe, isLoading, error } = useQuery<Recipe>({
     queryKey: ['recipe', recipeId],
     queryFn: () => getRecipe(recipeId),
@@ -121,6 +130,35 @@ export default function RecipeDetail() {
     mutationFn: (id: string) => deleteRecipeAnnotation(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['recipe', recipeId] }),
   })
+
+  const shareMutation = useMutation({
+    mutationFn: () => shareRecipe(recipeId),
+    onSuccess: (data: { share_token: string | null }) => {
+      setShareTokenOverride(data.share_token)
+      queryClient.invalidateQueries({ queryKey: ['recipe', recipeId] })
+    },
+  })
+  const unshareMutation = useMutation({
+    mutationFn: () => unshareRecipe(recipeId),
+    onSuccess: () => {
+      setShareTokenOverride(null)
+      setCopied(false)
+      queryClient.invalidateQueries({ queryKey: ['recipe', recipeId] })
+    },
+  })
+
+  // Prefer a token mutated this session; otherwise trust the loaded recipe.
+  const shareToken = shareTokenOverride === undefined ? (recipe?.share_token ?? null) : shareTokenOverride
+  const shareUrl = shareToken && typeof window !== 'undefined'
+    ? `${window.location.origin}/share/${shareToken}`
+    : ''
+
+  const copyShareLink = () => {
+    if (!shareUrl) return
+    navigator.clipboard.writeText(shareUrl)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
 
   const annotationsByStep = recipe?.annotations?.reduce((acc, ann) => {
     if (ann.step_index !== undefined && ann.step_index !== null) {
@@ -187,31 +225,59 @@ export default function RecipeDetail() {
           >
             <ChevronLeft size={16} /> Back
           </Link>
-          <button
-            onClick={() => setIsEditModalOpen(true)}
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: '6px',
-              fontSize: '13px', fontWeight: 500, color: 'var(--color-ink-secondary)',
-              background: 'var(--color-surface-raised)',
-              border: '1px solid var(--color-border)',
-              borderRadius: 'var(--radius-md)',
-              padding: '8px 14px',
-              cursor: 'pointer',
-              boxShadow: 'var(--shadow-xs)',
-              transition: `border-color var(--duration-fast) var(--ease-standard),
-                           color var(--duration-fast) var(--ease-standard)`,
-            }}
-            onMouseEnter={e => {
-              e.currentTarget.style.borderColor = 'var(--color-brand)'
-              e.currentTarget.style.color = 'var(--color-brand-text)'
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.borderColor = 'var(--color-border)'
-              e.currentTarget.style.color = 'var(--color-ink-secondary)'
-            }}
-          >
-            <PenLine size={14} /> Edit Recipe
-          </button>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              onClick={() => { setIsShareOpen(true); setCopied(false) }}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: '6px',
+                fontSize: '13px', fontWeight: 500,
+                color: shareToken ? 'var(--color-sage-text)' : 'var(--color-ink-secondary)',
+                background: 'var(--color-surface-raised)',
+                border: `1px solid ${shareToken ? 'var(--color-sage)' : 'var(--color-border)'}`,
+                borderRadius: 'var(--radius-md)',
+                padding: '8px 14px',
+                cursor: 'pointer',
+                boxShadow: 'var(--shadow-xs)',
+                transition: `border-color var(--duration-fast) var(--ease-standard),
+                             color var(--duration-fast) var(--ease-standard)`,
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.borderColor = 'var(--color-sage)'
+                e.currentTarget.style.color = 'var(--color-sage-text)'
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.borderColor = shareToken ? 'var(--color-sage)' : 'var(--color-border)'
+                e.currentTarget.style.color = shareToken ? 'var(--color-sage-text)' : 'var(--color-ink-secondary)'
+              }}
+            >
+              <Share2 size={14} /> {shareToken ? 'Shared' : 'Share'}
+            </button>
+            <button
+              onClick={() => setIsEditModalOpen(true)}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: '6px',
+                fontSize: '13px', fontWeight: 500, color: 'var(--color-ink-secondary)',
+                background: 'var(--color-surface-raised)',
+                border: '1px solid var(--color-border)',
+                borderRadius: 'var(--radius-md)',
+                padding: '8px 14px',
+                cursor: 'pointer',
+                boxShadow: 'var(--shadow-xs)',
+                transition: `border-color var(--duration-fast) var(--ease-standard),
+                             color var(--duration-fast) var(--ease-standard)`,
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.borderColor = 'var(--color-brand)'
+                e.currentTarget.style.color = 'var(--color-brand-text)'
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.borderColor = 'var(--color-border)'
+                e.currentTarget.style.color = 'var(--color-ink-secondary)'
+              }}
+            >
+              <PenLine size={14} /> Edit Recipe
+            </button>
+          </div>
         </div>
 
         {/* Cover image */}
@@ -856,6 +922,102 @@ export default function RecipeDetail() {
         onClose={() => setIsEditModalOpen(false)}
         recipe={recipe}
       />
+
+      {/* Share modal */}
+      {isShareOpen && (
+        <div
+          onClick={() => setIsShareOpen(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 50,
+            background: 'oklch(20% 0.02 34 / 0.45)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '24px',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              width: '100%', maxWidth: '460px',
+              background: 'var(--color-surface-raised)',
+              border: '1px solid var(--color-border)',
+              borderRadius: 'var(--radius-xl)',
+              boxShadow: 'var(--shadow-lg)',
+              padding: '24px',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', fontWeight: 600, color: 'var(--color-ink)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Share2 size={18} style={{ color: 'var(--color-sage)' }} /> Share recipe
+              </h2>
+              <button onClick={() => setIsShareOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-ink-muted)', display: 'flex' }}>
+                <X size={18} />
+              </button>
+            </div>
+            <p style={{ fontSize: '13px', lineHeight: 1.6, color: 'var(--color-ink-secondary)', marginBottom: '20px' }}>
+              Anyone with the link can view this recipe and its comments on a read-only page. They can&apos;t edit anything or browse the rest of your hearth.
+            </p>
+
+            {shareToken ? (
+              <>
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+                  <div style={{
+                    flex: 1, display: 'flex', alignItems: 'center', gap: '8px',
+                    border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)',
+                    padding: '9px 12px', background: 'var(--color-canvas)', overflow: 'hidden',
+                  }}>
+                    <Link2 size={14} style={{ color: 'var(--color-ink-muted)', flexShrink: 0 }} />
+                    <span style={{ fontSize: '13px', color: 'var(--color-ink-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {shareUrl}
+                    </span>
+                  </div>
+                  <button
+                    onClick={copyShareLink}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '6px',
+                      fontSize: '13px', fontWeight: 600, color: 'white',
+                      background: copied ? 'var(--color-sage)' : 'var(--color-brand)',
+                      border: 'none', borderRadius: 'var(--radius-md)', padding: '0 14px',
+                      cursor: 'pointer', flexShrink: 0,
+                      transition: `background var(--duration-fast)`,
+                    }}
+                  >
+                    {copied ? <><Check size={14} /> Copied</> : <><Copy size={14} /> Copy</>}
+                  </button>
+                </div>
+                <button
+                  onClick={() => unshareMutation.mutate()}
+                  disabled={unshareMutation.isPending}
+                  style={{
+                    fontSize: '13px', fontWeight: 500, color: 'var(--color-error)',
+                    background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0',
+                    display: 'inline-flex', alignItems: 'center', gap: '6px',
+                    opacity: unshareMutation.isPending ? 0.5 : 1,
+                  }}
+                >
+                  {unshareMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <X size={14} />}
+                  Stop sharing
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => shareMutation.mutate()}
+                disabled={shareMutation.isPending}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '8px',
+                  fontSize: '14px', fontWeight: 600, color: 'white',
+                  background: 'var(--color-brand)', border: 'none',
+                  borderRadius: 'var(--radius-md)', padding: '10px 18px',
+                  cursor: 'pointer', boxShadow: 'var(--shadow-xs)',
+                  opacity: shareMutation.isPending ? 0.5 : 1,
+                }}
+              >
+                {shareMutation.isPending ? <Loader2 size={15} className="animate-spin" /> : <Link2 size={15} />}
+                Create public link
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </main>
   )
 }

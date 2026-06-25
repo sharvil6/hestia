@@ -117,6 +117,9 @@ class Recipe(Base):
     prep_time = Column(Integer, nullable=True)
     cook_time = Column(Integer, nullable=True)
     source_url = Column(String, nullable=True)
+    # Opt-in public sharing. NULL = not shared. A random urlsafe token is the
+    # unguessable, revocable key for the read-only public page.
+    share_token = Column(String, nullable=True, unique=True, index=True)
     created_by = Column(String, ForeignKey("users.id"))
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

@@ -20,6 +20,7 @@ export interface Annotation {
   id: string;
   recipe_id: string;
   user_id?: string;
+  author_name?: string;
   step_index?: number;
   content: string;
   image_path?: string;
@@ -35,10 +36,38 @@ export interface Recipe {
   prep_time?: number;
   cook_time?: number;
   source_url?: string;
+  // Non-null when the recipe has a live public share link.
+  share_token?: string | null;
   ingredients: Ingredient[];
   instructions: Instruction[];
   tags: Tag[];
   annotations: Annotation[];
+}
+
+// A comment as exposed on the public share page (no user_id / privacy fields).
+export interface PublicAnnotation {
+  id: string;
+  step_index?: number;
+  content: string;
+  image_path?: string;
+  author_name?: string;
+  created_at: string;
+}
+
+// Read-only recipe payload returned by the unauthenticated public share endpoint.
+export interface PublicRecipe {
+  id: string;
+  title: string;
+  description?: string;
+  cover_image?: string;
+  original_yield?: number;
+  prep_time?: number;
+  cook_time?: number;
+  source_url?: string;
+  ingredients: Ingredient[];
+  instructions: Instruction[];
+  tags: Tag[];
+  annotations: PublicAnnotation[];
 }
 
 export interface RecipeCreate {

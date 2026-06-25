@@ -49,8 +49,47 @@ class RecipeCreate(RecipeBase):
 class RecipeResponse(RecipeBase):
     id: str
     created_by: Optional[str] = None
+    # Present (non-null) when the recipe has a live public share link. Lets the
+    # detail page show the current share state without a second request.
+    share_token: Optional[str] = None
     tags: List[TagResponse] = []
     annotations: List["AnnotationResponse"] = []
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ShareResponse(BaseModel):
+    """The current public-share state of a recipe (null token = not shared)."""
+    share_token: Optional[str] = None
+
+
+class PublicAnnotation(BaseModel):
+    """A comment as exposed on the public page. Deliberately omits user_id and
+    is_private — only public comments are ever serialized through this."""
+    id: str
+    step_index: Optional[int] = None
+    content: str
+    image_path: Optional[str] = None
+    author_name: Optional[str] = None
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PublicRecipeResponse(BaseModel):
+    """Read-only recipe payload for the unauthenticated public share page.
+    A narrowed projection of RecipeResponse — no created_by, no share_token,
+    and only non-private comments."""
+    id: str
+    title: str
+    description: Optional[str] = None
+    cover_image: Optional[str] = None
+    original_yield: Optional[int] = 1
+    prep_time: Optional[int] = None
+    cook_time: Optional[int] = None
+    source_url: Optional[str] = None
+    ingredients: List[IngredientBase] = []
+    instructions: List[InstructionBase] = []
+    tags: List[TagResponse] = []
+    annotations: List[PublicAnnotation] = []
     model_config = ConfigDict(from_attributes=True)
 
 class AnnotationBase(BaseModel):

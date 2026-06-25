@@ -16,6 +16,7 @@ const SESSION_COOKIE = process.env.NEXT_PUBLIC_SESSION_COOKIE || 'hestia_session
 const PUBLIC_PATHS = [
   '/login',
   '/enroll',  // /enroll/[code]
+  '/share',   // /share/[token] — read-only public recipe pages
 ]
 
 function isPublic(pathname: string): boolean {

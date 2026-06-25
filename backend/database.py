@@ -57,3 +57,14 @@ def ensure_schema_upgrades():
             cols = {c["name"] for c in inspector.get_columns("users")}
             if "is_admin" not in cols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN is_admin BOOLEAN NOT NULL DEFAULT 0"))
+        if "recipes" in table_names:
+            cols = {c["name"] for c in inspector.get_columns("recipes")}
+            if "share_token" not in cols:
+                # ALTER ADD COLUMN can't carry a UNIQUE constraint in SQLite, so
+                # enforce uniqueness with a separate index. NULLs are exempt, so
+                # any number of unshared recipes coexist.
+                conn.execute(text("ALTER TABLE recipes ADD COLUMN share_token VARCHAR"))
+                conn.execute(text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS ix_recipes_share_token "
+                    "ON recipes (share_token)"
+                ))

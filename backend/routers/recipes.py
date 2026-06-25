@@ -5,6 +5,7 @@ import logging
 
 import os
 import uuid
+import secrets
 import shutil
 import models, schemas
 from database import get_db
@@ -38,12 +39,60 @@ def read_recipes(skip: int = 0, limit: int = 100, db: Session = Depends(get_db),
     recipes = db.query(models.Recipe).offset(skip).limit(limit).all()
     return recipes
 
+@router.get("/public/{share_token}", response_model=schemas.PublicRecipeResponse)
+def read_public_recipe(share_token: str, db: Session = Depends(get_db)):
+    """Unauthenticated read of a shared recipe. The only un-gated recipe endpoint:
+    access is by possession of the unguessable share token. Private comments are
+    never returned."""
+    recipe = (
+        db.query(models.Recipe)
+        .filter(models.Recipe.share_token == share_token)
+        .first()
+    )
+    if recipe is None:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    payload = schemas.PublicRecipeResponse.model_validate(recipe)
+    payload.annotations = [
+        schemas.PublicAnnotation.model_validate(a)
+        for a in recipe.annotations
+        if not a.is_private
+    ]
+    return payload
+
+
 @router.get("/{recipe_id}", response_model=schemas.RecipeResponse)
 def read_recipe(recipe_id: str, db: Session = Depends(get_db), _user=Depends(get_current_user)):
     recipe = db.query(models.Recipe).filter(models.Recipe.id == recipe_id).first()
     if recipe is None:
         raise HTTPException(status_code=404, detail="Recipe not found")
     return recipe
+
+
+@router.post("/{recipe_id}/share", response_model=schemas.ShareResponse)
+def share_recipe(recipe_id: str, db: Session = Depends(get_db), _user=Depends(get_current_user)):
+    """Enable public sharing, minting a token if one doesn't exist yet. Idempotent:
+    re-sharing an already-shared recipe returns the existing token (the live link
+    keeps working)."""
+    recipe = db.query(models.Recipe).filter(models.Recipe.id == recipe_id).first()
+    if recipe is None:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    if not recipe.share_token:
+        recipe.share_token = secrets.token_urlsafe(16)
+        db.commit()
+        db.refresh(recipe)
+    return schemas.ShareResponse(share_token=recipe.share_token)
+
+
+@router.delete("/{recipe_id}/share", response_model=schemas.ShareResponse)
+def unshare_recipe(recipe_id: str, db: Session = Depends(get_db), _user=Depends(get_current_user)):
+    """Revoke the public link. The old token is discarded, so any previously
+    shared URL 404s immediately; re-sharing later mints a fresh token."""
+    recipe = db.query(models.Recipe).filter(models.Recipe.id == recipe_id).first()
+    if recipe is None:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    recipe.share_token = None
+    db.commit()
+    return schemas.ShareResponse(share_token=None)
 
 @router.post("/", response_model=schemas.RecipeResponse)
 def create_recipe(recipe: schemas.RecipeCreate, db: Session = Depends(get_db), _user=Depends(get_current_user)):
