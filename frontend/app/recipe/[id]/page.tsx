@@ -1003,10 +1003,11 @@ export default function RecipeDetail() {
                 onClick={() => shareMutation.mutate()}
                 disabled={shareMutation.isPending}
                 style={{
-                  display: 'inline-flex', alignItems: 'center', gap: '8px',
+                  width: '100%',
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                   fontSize: '14px', fontWeight: 600, color: 'white',
                   background: 'var(--color-brand)', border: 'none',
-                  borderRadius: 'var(--radius-md)', padding: '10px 18px',
+                  borderRadius: 'var(--radius-md)', padding: '11px 18px',
                   cursor: 'pointer', boxShadow: 'var(--shadow-xs)',
                   opacity: shareMutation.isPending ? 0.5 : 1,
                 }}
