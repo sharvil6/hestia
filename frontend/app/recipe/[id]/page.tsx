@@ -60,6 +60,7 @@ interface Recipe {
   ingredients: Ingredient[]; instructions: Instruction[]
   tags: { id: string; name: string }[]; annotations: Annotation[]
   share_token?: string | null
+  created_at: string; updated_at?: string
 }
 
 /* ── Skeleton ──────────────────────────────────────────────── */
