@@ -52,6 +52,10 @@ class RecipeResponse(RecipeBase):
     # Present (non-null) when the recipe has a live public share link. Lets the
     # detail page show the current share state without a second request.
     share_token: Optional[str] = None
+    # Surfaced so the home page can build recency-ordered groups ("recently
+    # added"). Read straight off the model column via from_attributes.
+    created_at: datetime
+    updated_at: Optional[datetime] = None
     tags: List[TagResponse] = []
     annotations: List["AnnotationResponse"] = []
     model_config = ConfigDict(from_attributes=True)

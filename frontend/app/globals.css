@@ -122,3 +122,14 @@ body {
   animation: shimmer 1.5s infinite;
   border-radius: var(--radius-md);
 }
+
+/* ─── Horizontal scroll rails ───────────────────────────────── */
+/* Hide the scrollbar on discover rails / chip row; scrolling still works
+   via trackpad, touch, drag, and the chevron buttons. */
+.no-scrollbar {
+  scrollbar-width: none;        /* Firefox */
+  -ms-overflow-style: none;     /* old Edge */
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;                /* Chrome / Safari */
+}

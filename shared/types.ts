@@ -38,6 +38,9 @@ export interface Recipe {
   source_url?: string;
   // Non-null when the recipe has a live public share link.
   share_token?: string | null;
+  // ISO timestamps; used by the home page for recency-ordered groups.
+  created_at: string;
+  updated_at?: string;
   ingredients: Ingredient[];
   instructions: Instruction[];
   tags: Tag[];
