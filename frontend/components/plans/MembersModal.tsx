@@ -48,7 +48,7 @@ export default function MembersModal({
         <div>
           <span style={labelStyle}>Members</span>
           <p style={{ fontSize: '13px', color: 'var(--color-ink-secondary)', margin: '0 0 10px', lineHeight: 1.5 }}>
-            Members can add and remove meals and use the grocery list. Only you can change who's on the plan.
+            Members can add and remove meals and use the grocery list. Only you can change who&apos;s on the plan.
           </p>
           <MemberPicker selectedIds={memberIds} onToggle={toggleMember} />
         </div>

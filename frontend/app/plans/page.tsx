@@ -200,7 +200,7 @@ export default function PlansPage() {
               <CalendarDays size={32} style={{ color: 'var(--color-brand)' }} strokeWidth={1.5} />
             </div>
             <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '22px', fontWeight: 600, color: 'var(--color-ink)', marginBottom: '8px' }}>
-              Plan the week's meals
+              Plan the week&apos;s meals
             </h2>
             <p style={{ fontSize: '15px', color: 'var(--color-ink-secondary)', maxWidth: '360px', lineHeight: 1.6, marginBottom: '20px' }}>
               Lay out breakfasts, lunches, and dinners for the week, share the plan with the family, and get a grocery list built for you.
