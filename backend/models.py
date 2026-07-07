@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, Integer, Float, Boolean, ForeignKey, DateTime, LargeBinary, Index, TypeDecorator, event
+from sqlalchemy import Column, String, Integer, Float, Boolean, ForeignKey, Date, DateTime, LargeBinary, Index, TypeDecorator, event
 from sqlalchemy.orm import relationship
 from database import Base
 import json
@@ -165,3 +165,71 @@ class Annotation(Base):
         """Display name of the comment's author, for serialization. None if the
         authoring user has been removed."""
         return self.user.display_name if self.user else None
+
+
+class MealPlan(Base):
+    """A single week of planned meals. Owned by created_by; other users can be
+    added as members (full edit rights, but only the owner manages membership
+    and deletion)."""
+    __tablename__ = "meal_plans"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    name = Column(String, nullable=True)
+    # Date-only, always snapped to the Monday of the plan's week server-side.
+    week_start = Column(Date, nullable=False)
+    created_by = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    owner = relationship("User")
+    members = relationship("User", secondary="meal_plan_members")
+    entries = relationship("MealPlanEntry", back_populates="plan", cascade="all, delete-orphan",
+                           order_by="MealPlanEntry.day, MealPlanEntry.slot, MealPlanEntry.position")
+    grocery_items = relationship("GroceryItem", back_populates="plan", cascade="all, delete-orphan",
+                                 order_by="GroceryItem.position")
+
+
+class MealPlanMember(Base):
+    __tablename__ = "meal_plan_members"
+
+    plan_id = Column(String, ForeignKey("meal_plans.id", ondelete="CASCADE"), primary_key=True)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+
+
+class MealPlanEntry(Base):
+    """One recipe placed in one meal slot. A slot (day + slot name) can hold any
+    number of entries."""
+    __tablename__ = "meal_plan_entries"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    plan_id = Column(String, ForeignKey("meal_plans.id", ondelete="CASCADE"), nullable=False, index=True)
+    day = Column(Integer, nullable=False)  # 0 = Monday … 6 = Sunday
+    slot = Column(String, nullable=False)  # "breakfast" | "lunch" | "dinner"
+    recipe_id = Column(String, ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False, index=True)
+    position = Column(Integer, nullable=False, default=0)
+    # Batch multiplier for this placement (2 = double the recipe). Grocery
+    # aggregation multiplies ingredient quantities by it.
+    scale = Column(Float, nullable=False, default=1.0)
+
+    plan = relationship("MealPlan", back_populates="entries")
+    recipe = relationship("Recipe")
+
+
+class GroceryItem(Base):
+    """A row on a plan's grocery list. Auto rows are derived from the planned
+    recipes' ingredients and carry a merge `key` ("item|unit", normalized) so
+    regeneration can reconcile without losing checked state. Manual rows
+    (is_manual=True) are user-added and never touched by regeneration."""
+    __tablename__ = "grocery_items"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    plan_id = Column(String, ForeignKey("meal_plans.id", ondelete="CASCADE"), nullable=False, index=True)
+    item = Column(String, nullable=False)   # display label
+    key = Column(String, nullable=False)    # merge key for auto rows; unique-ish per plan
+    qty = Column(Float, nullable=True)
+    unit = Column(String, nullable=False, default="")
+    checked = Column(Boolean, nullable=False, default=False)
+    is_manual = Column(Boolean, nullable=False, default=False)
+    position = Column(Integer, nullable=False, default=0)
+
+    plan = relationship("MealPlan", back_populates="grocery_items")

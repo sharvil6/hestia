@@ -22,6 +22,7 @@ from auth.deps import (
 )
 from database import get_db
 from models import AuthKey, Invite, Passkey, Session, User, WebAuthnChallenge
+import schemas
 
 logger = logging.getLogger("hestia.auth")
 router = APIRouter(prefix="/auth", tags=["Auth"])
@@ -384,6 +385,16 @@ class AdminUserOut(UserOut):
     passkey_count: int
     session_count: int
     created_at: datetime
+
+
+@router.get("/users/basic", response_model=List[schemas.UserPublic])
+def list_users_basic(
+    _user: User = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """Minimal user directory for any authenticated user — powers the meal-plan
+    member picker. Only id/display_name/avatar_id, nothing sensitive."""
+    return db.query(User).order_by(User.display_name).all()
 
 
 @router.get("/users", response_model=List[AdminUserOut])

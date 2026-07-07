@@ -92,6 +92,56 @@ export const unshareRecipe = (recipeId: string) =>
 export const getPublicRecipe = (shareToken: string) =>
   apiFetch(`/recipes/public/${encodeURIComponent(shareToken)}`);
 
+// ----- Meal plans ------------------------------------------------------------
+
+const jsonHeaders = { 'Content-Type': 'application/json' };
+
+export const getPlans = () => apiFetch('/plans/');
+
+export const getPlan = (id: string) => apiFetch(`/plans/${encodeURIComponent(id)}`);
+
+export const createPlan = (plan: { name?: string | null; week_start: string; member_ids: string[] }) =>
+  apiFetch('/plans/', { method: 'POST', headers: jsonHeaders, body: JSON.stringify(plan) });
+
+export const updatePlan = (id: string, changes: { name?: string | null; week_start?: string }) =>
+  apiFetch(`/plans/${encodeURIComponent(id)}`, { method: 'PATCH', headers: jsonHeaders, body: JSON.stringify(changes) });
+
+export const deletePlan = (id: string) =>
+  apiFetch(`/plans/${encodeURIComponent(id)}`, { method: 'DELETE' });
+
+// Owner-only, replace-all membership (the owner is implicit and never listed).
+export const setPlanMembers = (id: string, user_ids: string[]) =>
+  apiFetch(`/plans/${encodeURIComponent(id)}/members`, { method: 'PUT', headers: jsonHeaders, body: JSON.stringify({ user_ids }) });
+
+export const addPlanEntry = (id: string, entry: { day: number; slot: string; recipe_id: string; scale?: number }) =>
+  apiFetch(`/plans/${encodeURIComponent(id)}/entries`, { method: 'POST', headers: jsonHeaders, body: JSON.stringify(entry) });
+
+// Change an entry's batch scale (2 = double, 3 = triple); grocery list re-syncs.
+export const updatePlanEntry = (id: string, entryId: string, changes: { scale: number }) =>
+  apiFetch(`/plans/${encodeURIComponent(id)}/entries/${encodeURIComponent(entryId)}`, { method: 'PATCH', headers: jsonHeaders, body: JSON.stringify(changes) });
+
+export const deletePlanEntry = (id: string, entryId: string) =>
+  apiFetch(`/plans/${encodeURIComponent(id)}/entries/${encodeURIComponent(entryId)}`, { method: 'DELETE' });
+
+export const addGroceryItem = (id: string, item: { item: string; qty?: number | null; unit?: string }) =>
+  apiFetch(`/plans/${encodeURIComponent(id)}/grocery`, { method: 'POST', headers: jsonHeaders, body: JSON.stringify(item) });
+
+export const updateGroceryItem = (
+  id: string,
+  itemId: string,
+  changes: { checked?: boolean; item?: string; qty?: number | null; unit?: string },
+) =>
+  apiFetch(`/plans/${encodeURIComponent(id)}/grocery/${encodeURIComponent(itemId)}`, { method: 'PATCH', headers: jsonHeaders, body: JSON.stringify(changes) });
+
+export const deleteGroceryItem = (id: string, itemId: string) =>
+  apiFetch(`/plans/${encodeURIComponent(id)}/grocery/${encodeURIComponent(itemId)}`, { method: 'DELETE' });
+
+export const regenerateGrocery = (id: string) =>
+  apiFetch(`/plans/${encodeURIComponent(id)}/grocery/regenerate`, { method: 'POST' });
+
+// Minimal user directory for the member picker (any authenticated user).
+export const listUsersBasic = () => apiFetch('/auth/users/basic');
+
 // ----- Auth ------------------------------------------------------------------
 
 export const authMe = () => apiFetch('/auth/me');

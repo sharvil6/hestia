@@ -86,6 +86,60 @@ export interface RecipeCreate {
   tags: string[];
 }
 
+// ----- Meal plans -------------------------------------------------------------
+
+export type MealSlot = 'breakfast' | 'lunch' | 'dinner';
+
+// Minimal user projection returned to any authenticated user (member pickers,
+// plan member lists).
+export interface UserPublic {
+  id: string;
+  display_name: string;
+  avatar_id: string | null;
+}
+
+export interface RecipeSummary {
+  id: string;
+  title: string;
+  cover_image?: string | null;
+}
+
+export interface MealPlanEntry {
+  id: string;
+  day: number; // 0 = Monday … 6 = Sunday
+  slot: MealSlot;
+  position: number;
+  // Batch multiplier (2 = doubled). Grocery quantities scale with it.
+  scale: number;
+  recipe: RecipeSummary;
+}
+
+export interface GroceryItem {
+  id: string;
+  item: string;
+  qty: number | null;
+  unit: string;
+  checked: boolean;
+  is_manual: boolean;
+  position: number;
+}
+
+export interface MealPlanSummary {
+  id: string;
+  name: string | null;
+  week_start: string; // ISO date, always a Monday
+  created_by: string;
+  owner: UserPublic;
+  members: UserPublic[];
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface MealPlanDetail extends MealPlanSummary {
+  entries: MealPlanEntry[];
+  grocery_items: GroceryItem[];
+}
+
 // ----- Auth types -------------------------------------------------------------
 
 export interface User {

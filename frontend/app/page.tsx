@@ -9,10 +9,10 @@ import { useCurrentUser } from '@/lib/currentUser'
 import type { Recipe } from '@hestia/shared/types'
 import Link from 'next/link'
 import AddRecipeModal from '@/components/AddRecipeModal'
+import AppNav from '@/components/AppNav'
 import {
   Flame,
   Search,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Users,
@@ -27,12 +27,6 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react'
-
-function initialFor(name: string | undefined): string {
-  if (!name) return '?'
-  const trimmed = name.trim()
-  return trimmed ? trimmed.charAt(0).toUpperCase() : '?'
-}
 
 function firstNameOf(name: string | undefined): string {
   if (!name) return ''
@@ -574,12 +568,6 @@ export default function Home() {
     setActiveTag('all')
   }
 
-  // Signed in → click avatar to manage account. Signed out → go log in.
-  const avatarHref = currentUser ? '/settings/security' : '/login'
-  const avatarLabel = currentUser
-    ? `Account settings for ${currentUser.display_name}`
-    : 'Sign in'
-
   const recipeCount = recipes?.length ?? 0
   const firstName = firstNameOf(currentUser?.display_name)
 
@@ -587,61 +575,7 @@ export default function Home() {
     <main style={{ minHeight: '100vh', background: 'var(--color-canvas)', color: 'var(--color-ink)' }}>
       <div style={{ maxWidth: '1040px', margin: '0 auto', padding: '0 24px 96px' }}>
 
-        {/* Header */}
-        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBlock: '28px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Flame size={20} strokeWidth={1.75} style={{ color: 'var(--color-brand)', flexShrink: 0 }} />
-            <span
-              style={{
-                fontFamily: 'var(--font-display)',
-                fontSize: '28px',
-                fontWeight: 600,
-                color: 'var(--color-brand)',
-                letterSpacing: 'var(--tracking-tight)',
-                lineHeight: 1,
-              }}
-            >
-              Hestia
-            </span>
-          </div>
-
-          <Link
-            href={avatarHref}
-            aria-label={avatarLabel}
-            title={avatarLabel}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              textDecoration: 'none',
-              padding: '2px',
-              borderRadius: 'var(--radius-pill)',
-              transition: `background var(--duration-fast) var(--ease-standard)`,
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-surface-sunken)' }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
-          >
-            <div
-              style={{
-                width: '32px',
-                height: '32px',
-                borderRadius: 'var(--radius-pill)',
-                background: 'var(--color-brand-muted)',
-                color: 'var(--color-brand-text)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontFamily: 'var(--font-display)',
-                fontStyle: 'italic',
-                fontSize: '14px',
-                fontWeight: 600,
-              }}
-            >
-              {initialFor(currentUser?.display_name)}
-            </div>
-            <ChevronDown size={12} style={{ color: 'var(--color-ink-muted)' }} />
-          </Link>
-        </header>
+        <AppNav />
 
         {/* Greeting */}
         {recipeCount > 0 && (

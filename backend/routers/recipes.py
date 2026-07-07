@@ -10,6 +10,7 @@ import shutil
 import models, schemas
 from database import get_db
 from auth.deps import get_current_user
+from services.grocery import sync_grocery_items
 
 logger = logging.getLogger("hestia.recipes")
 
@@ -121,7 +122,22 @@ def delete_recipe(recipe_id: str, db: Session = Depends(get_db), _user=Depends(g
     recipe = db.query(models.Recipe).filter(models.Recipe.id == recipe_id).first()
     if recipe is None:
         raise HTTPException(status_code=404, detail="Recipe not found")
+    # Meal-plan entries referencing this recipe cascade away at the DB level;
+    # remember which plans were affected so their grocery lists can re-sync.
+    affected_plan_ids = [
+        row[0]
+        for row in db.query(models.MealPlanEntry.plan_id)
+        .filter(models.MealPlanEntry.recipe_id == recipe_id)
+        .distinct()
+        .all()
+    ]
     db.delete(recipe)
+    db.flush()
+    db.expire_all()  # entry rows were removed by FK cascade behind the ORM's back
+    for plan_id in affected_plan_ids:
+        plan = db.query(models.MealPlan).filter(models.MealPlan.id == plan_id).first()
+        if plan is not None:
+            sync_grocery_items(db, plan)
     db.commit()
     return {"ok": True}
 

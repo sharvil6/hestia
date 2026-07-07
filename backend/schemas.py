@@ -1,6 +1,6 @@
-from pydantic import BaseModel, ConfigDict
-from typing import List, Optional
-from datetime import datetime
+from pydantic import BaseModel, ConfigDict, Field
+from typing import List, Literal, Optional
+from datetime import date, datetime
 
 class UserBase(BaseModel):
     display_name: str
@@ -115,3 +115,102 @@ class AnnotationResponse(AnnotationBase):
 
 # Rebuild the model to resolve the "AnnotationResponse" forward reference
 RecipeResponse.model_rebuild()
+
+
+# --- Meal plans ---
+
+MealSlot = Literal["breakfast", "lunch", "dinner"]
+
+
+class UserPublic(BaseModel):
+    """Minimal user projection safe to show to any authenticated user
+    (member pickers, plan member lists)."""
+    id: str
+    display_name: str
+    avatar_id: Optional[str] = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MealPlanCreate(BaseModel):
+    name: Optional[str] = None
+    week_start: date  # any day; snapped to Monday server-side
+    member_ids: List[str] = []
+
+
+class MealPlanUpdate(BaseModel):
+    name: Optional[str] = None
+    week_start: Optional[date] = None
+
+
+class MemberSet(BaseModel):
+    user_ids: List[str]
+
+
+class EntryCreate(BaseModel):
+    day: int = Field(ge=0, le=6)
+    slot: MealSlot
+    recipe_id: str
+    scale: float = Field(1.0, gt=0, le=20)
+
+
+class EntryUpdate(BaseModel):
+    scale: float = Field(gt=0, le=20)
+
+
+class RecipeSummary(BaseModel):
+    id: str
+    title: str
+    cover_image: Optional[str] = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class EntryResponse(BaseModel):
+    id: str
+    day: int
+    slot: MealSlot
+    position: int
+    scale: float
+    recipe: RecipeSummary
+    model_config = ConfigDict(from_attributes=True)
+
+
+class GroceryItemCreate(BaseModel):
+    item: str
+    qty: Optional[float] = None
+    unit: str = ""
+
+
+class GroceryItemUpdate(BaseModel):
+    checked: Optional[bool] = None
+    # Label/qty/unit edits only apply to manual rows.
+    item: Optional[str] = None
+    qty: Optional[float] = None
+    unit: Optional[str] = None
+
+
+class GroceryItemResponse(BaseModel):
+    id: str
+    item: str
+    qty: Optional[float] = None
+    unit: str
+    checked: bool
+    is_manual: bool
+    position: int
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MealPlanSummary(BaseModel):
+    id: str
+    name: Optional[str] = None
+    week_start: date
+    created_by: str
+    owner: UserPublic
+    members: List[UserPublic] = []
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MealPlanDetail(MealPlanSummary):
+    entries: List[EntryResponse] = []
+    grocery_items: List[GroceryItemResponse] = []

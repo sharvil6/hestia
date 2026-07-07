@@ -57,6 +57,10 @@ def ensure_schema_upgrades():
             cols = {c["name"] for c in inspector.get_columns("users")}
             if "is_admin" not in cols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN is_admin BOOLEAN NOT NULL DEFAULT 0"))
+        if "meal_plan_entries" in table_names:
+            cols = {c["name"] for c in inspector.get_columns("meal_plan_entries")}
+            if "scale" not in cols:
+                conn.execute(text("ALTER TABLE meal_plan_entries ADD COLUMN scale FLOAT NOT NULL DEFAULT 1.0"))
         if "recipes" in table_names:
             cols = {c["name"] for c in inspector.get_columns("recipes")}
             if "share_token" not in cols:

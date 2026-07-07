@@ -7,8 +7,8 @@ import { useState, useRef } from 'react'
 import { getRecipe, addRecipeAnnotation, updateRecipeAnnotation, deleteRecipeAnnotation, shareRecipe, unshareRecipe } from '@/lib/api'
 import { mediaUrl } from '@/lib/media'
 import { useCurrentUserId } from '@/lib/currentUser'
+import AppNav from '@/components/AppNav'
 import {
-  ChevronLeft,
   Image as ImageIcon,
   X,
   Loader2,
@@ -211,21 +211,10 @@ export default function RecipeDetail() {
     <main style={{ minHeight: '100vh', background: 'var(--color-canvas)', color: 'var(--color-ink)' }}>
       <div style={{ maxWidth: '768px', margin: '0 auto', padding: '0 24px 96px' }}>
 
-        {/* Nav bar */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBlock: '32px' }}>
-          <Link
-            href="/"
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: '4px',
-              fontSize: '14px', fontWeight: 500, color: 'var(--color-ink-secondary)',
-              textDecoration: 'none',
-              transition: `color var(--duration-fast) var(--ease-standard)`,
-            }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'var(--color-ink)' }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'var(--color-ink-secondary)' }}
-          >
-            <ChevronLeft size={16} /> Back
-          </Link>
+        <AppNav />
+
+        {/* Action bar */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', paddingBottom: '20px' }}>
           <div style={{ display: 'flex', gap: '8px' }}>
             <button
               onClick={() => { setIsShareOpen(true); setCopied(false) }}

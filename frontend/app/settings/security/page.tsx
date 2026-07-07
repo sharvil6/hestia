@@ -4,9 +4,10 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  ArrowLeft, KeyRound, QrCode, RefreshCw, Trash2, UserPlus, ShieldOff,
+  KeyRound, QrCode, RefreshCw, Trash2, UserPlus, ShieldOff,
   Loader2, Plus, Copy, Check, Share2,
 } from 'lucide-react'
+import AppNav from '@/components/AppNav'
 import QRCode from 'qrcode'
 import {
   authAdminRevokeUser, authCreateInvite, authListSessions, authListUsers,
@@ -23,22 +24,14 @@ import type {
 } from '@hestia/shared/types'
 
 export default function SecurityPage() {
-  const router = useRouter()
   const { data: user, isLoading } = useCurrentUser()
   if (isLoading) return <CenterSpinner />
   if (!user) return null
 
   return (
     <main style={{ minHeight: '100dvh', background: 'var(--color-canvas)' }}>
-      <div style={{ maxWidth: 720, margin: '0 auto', padding: '24px' }}>
-        <button onClick={() => router.push('/')}
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 4,
-            background: 'transparent', border: 'none', cursor: 'pointer',
-            color: 'var(--color-ink-secondary)', padding: '4px 0', marginBottom: 16, fontSize: 14,
-          }}>
-          <ArrowLeft size={16} /> Back
-        </button>
+      <div style={{ maxWidth: 720, margin: '0 auto', padding: '0 24px 24px' }}>
+        <AppNav />
 
         <h1 style={{
           fontFamily: 'var(--font-display)', fontSize: '2rem', fontWeight: 600,
