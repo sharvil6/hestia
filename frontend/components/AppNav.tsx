@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { BookOpen, CalendarDays, ChevronDown, Flame } from 'lucide-react'
+import { BookOpen, CalendarDays, ChevronDown, Flame, ShieldCheck } from 'lucide-react'
 import { useCurrentUser } from '@/lib/currentUser'
 
 function initialFor(name: string | undefined): string {
@@ -73,6 +73,7 @@ export default function AppNav() {
   const onPlans = pathname === '/plans' || pathname.startsWith('/plans/')
   // Recipes covers browsing and recipe detail — everything that isn't plans/settings.
   const onRecipes = pathname === '/' || pathname.startsWith('/recipe/')
+  const onAdmin = pathname === '/admin' || pathname.startsWith('/admin/')
 
   const avatarHref = currentUser ? '/settings/security' : '/login'
   const avatarLabel = currentUser
@@ -105,6 +106,9 @@ export default function AppNav() {
       <nav aria-label="Sections" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
         <NavTab href="/" label="Recipes" icon={BookOpen} active={onRecipes} />
         <NavTab href="/plans" label="Meal plans" icon={CalendarDays} active={onPlans} />
+        {currentUser?.is_admin && (
+          <NavTab href="/admin" label="Admin" icon={ShieldCheck} active={onAdmin} />
+        )}
       </nav>
 
       <Link

@@ -174,6 +174,31 @@ export interface AdminUserInfo extends User {
   created_at: string;
 }
 
+export interface AuthEvent {
+  id: string;
+  event_type: 'login' | 'logout' | 'login_failed' | 'enroll' | 'key_rotate';
+  user_id: string | null;
+  display_name: string | null;
+  auth_method: 'word_key' | 'passkey' | 'demo' | null;
+  ip: string | null;
+  country: string | null;
+  user_agent: string | null;
+  detail: string | null;
+  created_at: string;
+}
+
+export interface UserActivity {
+  user_id: string;
+  display_name: string;
+  is_admin: boolean;
+  active_sessions: number;
+  last_seen_at: string | null;
+  last_login_at: string | null;
+  last_ip: string | null;
+  last_country: string | null;
+  login_count: number;
+}
+
 export interface InviteCreated {
   code: string;
   enroll_url: string;

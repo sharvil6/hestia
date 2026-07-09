@@ -78,6 +78,30 @@ class Session(Base):
     device_label = Column(String, nullable=True)
 
 
+class AuthEvent(Base):
+    """Append-only audit log of authentication activity — who signed in (or tried
+    to), when, from what IP/country, and with which method. Powers the admin
+    activity page. Deliberately low-volume (one row per auth action, not per
+    request), so it needs no pruning for a family-scale deployment.
+
+    user_id is nullable: a failed login can't always be attributed to a real user.
+    display_name is a snapshot so the log stays readable after a user is deleted.
+    """
+    __tablename__ = "auth_events"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    # "login" | "logout" | "login_failed" | "enroll" | "key_rotate"
+    event_type = Column(String, nullable=False, index=True)
+    user_id = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    display_name = Column(String, nullable=True)
+    auth_method = Column(String, nullable=True)  # "word_key" | "passkey" | "demo"
+    ip = Column(String, nullable=True)
+    country = Column(String, nullable=True)  # ISO 3166-1 alpha-2 from Cloudflare
+    user_agent = Column(String, nullable=True)
+    detail = Column(String, nullable=True)  # e.g. failure reason
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+
+
 class Passkey(Base):
     """A WebAuthn credential bound to a user."""
     __tablename__ = "passkeys"

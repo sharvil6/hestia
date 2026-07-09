@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session as DBSession
 
+from auth import audit
 from auth import config
 from auth import keys as keyutil
 from auth import passkeys as pk
@@ -115,9 +116,13 @@ def _mint_session(
     request: Request,
     user: User,
     auth_method: str,
+    event_type: str = "login",
 ) -> tuple[Session, str]:
     """Returns (session_row, raw_token). The raw token is set as a cookie AND
-    returned so native clients (Expo) can store it for Bearer-header auth."""
+    returned so native clients (Expo) can store it for Bearer-header auth.
+
+    Every successful auth funnels through here, so it's also where we record the
+    corresponding success event to the audit log."""
     raw_token, prefix, hashed = keyutil.generate_session_token()
     sess = Session(
         id_prefix=prefix,
@@ -132,6 +137,7 @@ def _mint_session(
     db.commit()
     db.refresh(sess)
     set_session_cookie(response, raw_token)
+    audit.record_event(db, request, event_type=event_type, user=user, auth_method=auth_method)
     return sess, raw_token
 
 
@@ -217,7 +223,7 @@ def enroll(
     invite.used_by_user_id = user.id
     db.commit()
 
-    _, token = _mint_session(db, response, request, user, auth_method="word_key")
+    _, token = _mint_session(db, response, request, user, auth_method="word_key", event_type="enroll")
     return EnrollResponse(
         user=UserOut.of(user),
         key_words=words,
@@ -255,10 +261,14 @@ def login_with_words(
         .first()
     )
     if auth_key is None or not keyutil.verify_key(raw, auth_key.key_hash):
+        audit.record_event(db, request, event_type="login_failed",
+                           auth_method="word_key", detail="invalid key")
         raise HTTPException(status_code=401, detail="invalid key")
 
     user = db.query(User).filter(User.id == auth_key.user_id).first()
     if user is None:
+        audit.record_event(db, request, event_type="login_failed",
+                           auth_method="word_key", detail="user gone")
         raise HTTPException(status_code=401, detail="invalid key")
 
     auth_key.last_used_at = _now()
@@ -288,13 +298,17 @@ def demo_login(
 
 @router.post("/logout")
 def logout(
+    request: Request,
     response: Response,
     db: DBSession = Depends(get_db),
     sess: Session = Depends(get_current_session),
 ):
+    user = db.query(User).filter(User.id == sess.user_id).first()
+    auth_method = sess.auth_method
     db.delete(sess)
     db.commit()
     clear_session_cookie(response)
+    audit.record_event(db, request, event_type="logout", user=user, auth_method=auth_method)
     return {"ok": True}
 
 
@@ -326,7 +340,7 @@ def rotate_key(
     ).delete()
     db.commit()
 
-    _, token = _mint_session(db, response, request, user, auth_method="word_key")
+    _, token = _mint_session(db, response, request, user, auth_method="word_key", event_type="key_rotate")
     return EnrollResponse(
         user=UserOut.of(user),
         key_words=words,
@@ -555,6 +569,8 @@ def passkey_login_complete(
         .first()
     )
     if stored is None:
+        audit.record_event(db, request, event_type="login_failed",
+                           auth_method="passkey", detail="unknown passkey")
         raise HTTPException(status_code=401, detail="unknown passkey")
 
     chall = (
@@ -578,6 +594,8 @@ def passkey_login_complete(
         )
     except Exception as e:
         logger.exception("passkey login failed")
+        audit.record_event(db, request, event_type="login_failed",
+                           auth_method="passkey", detail="verification failed")
         raise HTTPException(status_code=401, detail=f"login failed: {e}")
     finally:
         db.delete(chall)

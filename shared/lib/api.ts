@@ -199,6 +199,18 @@ export const authListUsers = () => apiFetch('/auth/users');
 export const authAdminRevokeUser = (userId: string) =>
   apiFetch(`/auth/users/${encodeURIComponent(userId)}/revoke-key`, { method: 'POST' });
 
+// Admin — audit / activity
+export const adminUserActivity = () => apiFetch('/admin/activity');
+
+export const adminAuthEvents = (params?: { limit?: number; event_type?: string; user_id?: string }) => {
+  const qs = new URLSearchParams();
+  if (params?.limit) qs.set('limit', String(params.limit));
+  if (params?.event_type) qs.set('event_type', params.event_type);
+  if (params?.user_id) qs.set('user_id', params.user_id);
+  const suffix = qs.toString() ? `?${qs}` : '';
+  return apiFetch(`/admin/auth-events${suffix}`);
+};
+
 // Passkeys
 export const passkeysList = () => apiFetch('/auth/passkeys');
 
