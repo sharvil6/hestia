@@ -35,7 +35,46 @@ interface InstructionStep {
 
 interface RawIngredient { qty?: number; unit?: string; item?: string; note?: string }
 interface RawInstruction { text?: string }
-interface ApiError { response?: { status?: number; data?: { detail?: string } } }
+// FastAPI answers with a string `detail` for deliberate errors and an array of
+// per-field issues for 422 validation failures. Both reach us through apiFetch.
+interface ValidationIssue { loc?: unknown[]; msg?: string }
+interface ApiError { response?: { status?: number; data?: { detail?: string | ValidationIssue[] } } }
+
+/**
+ * Reduce a failed request to one sentence the cook can act on.
+ *
+ * Handles the shapes that actually arrive: a string `detail`, a 422 array of
+ * field issues, and a bare network failure — where fetch rejects before
+ * apiFetch can read a body, so there is no `response` at all.
+ */
+function errorMessage(err: unknown, fallback: string): string {
+  const response = (err as ApiError)?.response;
+  if (!response) {
+    return 'Could not reach the server. Check your connection and try again.';
+  }
+  const { status, data } = response;
+  if (status === 401 || status === 403) {
+    return 'Your session has expired. Sign in again, then try once more.';
+  }
+  const detail = data?.detail;
+  if (Array.isArray(detail)) {
+    const [first] = detail;
+    // loc is like ["body", "ingredients", 0, "qty"]; "body" says nothing useful.
+    const field = Array.isArray(first?.loc)
+      ? first.loc.filter((part) => part !== 'body').join(' → ')
+      : '';
+    const reason = first?.msg ?? 'is not valid';
+    const others = detail.length > 1 ? ` (and ${detail.length - 1} more)` : '';
+    return field ? `${field}: ${reason}${others}.` : `${reason}${others}.`;
+  }
+  // 5xx first: a crash's `detail` is FastAPI's own "Internal Server Error",
+  // which tells a cook nothing. Deliberate failures are all 4xx.
+  if (status && status >= 500) {
+    return 'The server had trouble with that. Try again in a moment.';
+  }
+  if (typeof detail === 'string' && detail.trim()) return detail;
+  return fallback;
+}
 
 interface DraftFormState {
   title: string;
@@ -134,6 +173,17 @@ export default function AddRecipeModal({ isOpen, onClose, initialView = 'form' }
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
+  // Why the last publish attempt failed. Shown in the sticky footer, right above
+  // the button that failed, so it is visible wherever the panel is scrolled.
+  const [publishError, setPublishError] = useState<string | null>(null);
+  // Set when the blocker is the missing title, so the field can flag itself too
+  // — the footer alone would leave the user hunting up a long form.
+  const [titleInvalid, setTitleInvalid] = useState(false);
+  // The form as it stood when the publish failed. Comparing against it hides the
+  // banner the moment the user edits anything, without a clearing effect.
+  const failedPayloadRef = useRef<string | null>(null);
+  const titleInputRef = useRef<HTMLInputElement>(null);
+
   // Handle animation states
   useEffect(() => {
     if (isOpen) {
@@ -170,7 +220,7 @@ export default function AddRecipeModal({ isOpen, onClose, initialView = 'form' }
     },
     onError: (error) => {
       console.error('Failed to create recipe', error);
-      alert('Failed to save the recipe. Warming the hearth too fast?');
+      failPublish(errorMessage(error, 'The recipe could not be saved. Try again in a moment.'));
     }
   });
 
@@ -199,6 +249,9 @@ export default function AddRecipeModal({ isOpen, onClose, initialView = 'form' }
     setDraftStatus('idle');
     setView('form');
     lastSavedRef.current = null;
+    setPublishError(null);
+    setTitleInvalid(false);
+    failedPayloadRef.current = null;
   };
 
   // -- Draft autosave ---------------------------------------------------------
@@ -394,6 +447,20 @@ export default function AddRecipeModal({ isOpen, onClose, initialView = 'form' }
     onClose();
   };
 
+  /**
+   * Record a publish failure against the form that produced it. The banner shows
+   * only while the form still matches, so fixing the problem clears it.
+   */
+  const failPublish = (message: string, blockedByTitle = false) => {
+    setPublishError(message);
+    setTitleInvalid(blockedByTitle);
+    failedPayloadRef.current = serializedPayload;
+  };
+
+  // A failure is stale the moment the user edits their way past it.
+  const publishFailureIsCurrent = publishError !== null && failedPayloadRef.current === serializedPayload;
+  const showTitleInvalid = titleInvalid && failedPayloadRef.current === serializedPayload;
+
   /** A draft deleted from the list while it was open in the editor. */
   const handleDraftDeleted = (deletedId: string) => {
     if (deletedId !== draftId) return;
@@ -449,8 +516,7 @@ export default function AddRecipeModal({ isOpen, onClose, initialView = 'form' }
       setInstructions(stepList);
       setPhotoStep('editing');
     } catch (err) {
-      const msg = (err as ApiError)?.response?.data?.detail || 'Could not extract a recipe from that photo. Try a clearer image.';
-      setPhotoError(msg);
+      setPhotoError(errorMessage(err, 'Could not extract a recipe from that photo. Try a clearer image.'));
       setPhotoStep('error');
     }
   };
@@ -541,22 +607,30 @@ export default function AddRecipeModal({ isOpen, onClose, initialView = 'form' }
 
       setUrlStep('editing');
     } catch (err) {
-      const msg = (err as ApiError)?.response?.data?.detail || 'Could not parse a recipe from that URL. Try a different link.';
-      setUrlError(msg);
+      setUrlError(errorMessage(err, 'Could not parse a recipe from that URL. Try a different link.'));
       setUrlStep('error');
     }
   };
 
   const handleSave = async () => {
+    setPublishError(null);
+    setTitleInvalid(false);
+
     if (!title.trim()) {
-      alert('Please enter a title for your recipe.');
+      failPublish('Give the recipe a title before adding it to the hearth.', true);
+      // The title sits at the top of a long panel — take the user to it.
+      titleInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      titleInputRef.current?.focus({ preventScroll: true });
       return;
     }
 
     setIsUploading(true);
     const finalInstructions = [];
+    // Tracked outside the loop so a failure can name the step it happened on.
+    let stepInProgress = 0;
     try {
       for (let i = 0; i < instructions.length; i++) {
+        stepInProgress = i + 1;
         const step = instructions[i];
         let image_path = step.image_path;
         if (step.image) {
@@ -566,8 +640,11 @@ export default function AddRecipeModal({ isOpen, onClose, initialView = 'form' }
         finalInstructions.push({ step_number: i + 1, text: step.text, image_path: image_path });
       }
     } catch (err) {
-      console.error('Failed to upload image', err);
-      alert('Failed to upload step photo.');
+      console.error('Failed to upload step photo', err);
+      failPublish(
+        `The photo on step ${stepInProgress} could not be uploaded. ` +
+        errorMessage(err, 'Remove the photo and try again, or add it back after saving.'),
+      );
       setIsUploading(false);
       return;
     }
@@ -928,13 +1005,25 @@ export default function AddRecipeModal({ isOpen, onClose, initialView = 'form' }
                 {/* Story / About */}
                 <section className="space-y-4">
                   <div className="space-y-1">
-                    <input 
-                      type="text" 
+                    <input
+                      ref={titleInputRef}
+                      type="text"
                       value={title}
                       onChange={(e) => setTitle(e.target.value)}
-                      placeholder="Recipe Title" 
-                      className="w-full text-3xl font-serif bg-transparent border-0 border-b-2 border-transparent hover:border-gray-200 focus:border-[#8A9A5B] focus:ring-0 px-0 py-2 placeholder-gray-300 transition-colors outline-none"
+                      placeholder="Recipe Title"
+                      aria-invalid={showTitleInvalid || undefined}
+                      aria-describedby={showTitleInvalid ? 'recipe-title-error' : undefined}
+                      className={`w-full text-3xl font-serif bg-transparent border-0 border-b-2 focus:ring-0 px-0 py-2 placeholder-gray-300 transition-colors outline-none ${
+                        showTitleInvalid
+                          ? 'border-red-500 focus:border-red-500'
+                          : 'border-transparent hover:border-gray-200 focus:border-[#8A9A5B]'
+                      }`}
                     />
+                    {showTitleInvalid && (
+                      <p id="recipe-title-error" className="text-xs text-red-600">
+                        Every recipe needs a title before it can be saved.
+                      </p>
+                    )}
                   </div>
                   
                   <textarea 
@@ -1142,6 +1231,26 @@ export default function AddRecipeModal({ isOpen, onClose, initialView = 'form' }
           {/* Footer Actions */}
           {view === 'form' && isEditingPhase && (
             <div className="sticky bottom-0 bg-[#FDFBF7]/95 backdrop-blur-md px-6 py-4 border-t border-gray-200/60 space-y-3">
+              {/* Why the last publish attempt failed. Lives in the sticky footer
+                  so it is on screen wherever the form is scrolled. */}
+              {publishFailureIsCurrent && (
+                <div
+                  role="alert"
+                  aria-live="assertive"
+                  className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-700"
+                >
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <div className="min-w-0">
+                    <p>{publishError}</p>
+                    {draftId && (
+                      <p className="text-xs text-red-600/80 mt-1">
+                        Your draft is still saved — nothing was lost.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Autosave status. Only shown once there's something to lose. */}
               {(hasDraftContent || draftId) && (
                 <div className="flex items-center justify-between gap-3 text-xs">
