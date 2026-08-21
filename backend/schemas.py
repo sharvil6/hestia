@@ -61,6 +61,31 @@ class RecipeResponse(RecipeBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+class RecipeDraftSave(BaseModel):
+    """Body for creating or updating a draft. `payload` is the client's form
+    state verbatim — intentionally unvalidated, because a draft is allowed to be
+    incomplete or inconsistent in ways a real recipe is not."""
+    title: Optional[str] = None
+    payload: dict = {}
+
+
+class RecipeDraftSummary(BaseModel):
+    """Row in the drafts list — enough to identify and rank a draft without
+    shipping its whole payload."""
+    id: str
+    title: Optional[str] = None
+    ingredient_count: int = 0
+    instruction_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class RecipeDraftResponse(RecipeDraftSummary):
+    """A single draft, including the form state needed to resume editing."""
+    payload: dict = {}
+
+
 class ShareResponse(BaseModel):
     """The current public-share state of a recipe (null token = not shared)."""
     share_token: Optional[str] = None

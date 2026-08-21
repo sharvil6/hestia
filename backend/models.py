@@ -155,6 +155,30 @@ class Recipe(Base):
     tags = relationship("Tag", secondary="recipe_tags", back_populates="recipes")
     annotations = relationship("Annotation", back_populates="recipe", cascade="all, delete-orphan")
 
+class RecipeDraft(Base):
+    """A work-in-progress recipe, autosaved from the add-recipe form.
+
+    Deliberately *not* a Recipe with a status flag: a draft is half-typed form
+    state (a title may be missing, a quantity may be blank) and must never be
+    forced through RecipeCreate validation or show up in the shared cookbook.
+    The whole form is kept as an opaque JSON `payload` so the client can round-trip
+    exactly what the user had on screen; `title` is denormalized out of it purely
+    so the drafts list can be rendered and sorted without loading every payload.
+
+    Drafts are private to their author — unlike recipes, which the whole
+    household shares once published.
+    """
+    __tablename__ = "recipe_drafts"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    title = Column(String, nullable=True)
+    payload = Column(JSONEncodedDict, nullable=False, default=dict)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+
+
 class Tag(Base):
     __tablename__ = "tags"
     

@@ -82,8 +82,11 @@ logger.info("Upload directory: %s", UPLOAD_DIR)
 # Mount static files for images
 app.mount("/images", StaticFiles(directory=UPLOAD_DIR), name="images")
 
-from routers import recipes, auth, tags, plans, audit
+from routers import recipes, auth, tags, plans, audit, drafts
 app.include_router(auth.router)
+# Drafts first: its literal /recipes/drafts path must win over the recipes
+# router's /recipes/{recipe_id} catch-all, and FastAPI matches in include order.
+app.include_router(drafts.router)
 app.include_router(recipes.router)
 app.include_router(tags.router)
 app.include_router(plans.router)

@@ -1,13 +1,21 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { X, Plus, Trash2, Clock, Users, BookOpen, Link2, PenLine, Loader2, AlertCircle, Image as ImageIcon, Camera, Upload } from 'lucide-react';
-import { createRecipe, scrapeRecipePreview, uploadRecipeImage, visionRecipePreview } from '@/lib/api';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { X, Plus, Trash2, Clock, Users, BookOpen, Link2, PenLine, Loader2, AlertCircle, Image as ImageIcon, Camera, Upload, FileText, ArrowLeft, Check } from 'lucide-react';
+import {
+  createRecipe, scrapeRecipePreview, uploadRecipeImage, visionRecipePreview,
+  createRecipeDraft, updateRecipeDraft, deleteRecipeDraft, getRecipeDraft, getRecipeDrafts,
+} from '@/lib/api';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import TagInput from '@/components/TagInput';
+import DraftsPanel, { DRAFTS_QUERY_KEY } from '@/components/DraftsPanel';
+import { mediaUrl } from '@/lib/media';
 import { DEMO_MODE } from '@/lib/demo';
+import type { RecipeDraft, RecipeDraftSummary } from '@hestia/shared/types';
 
 interface AddRecipeModalProps {
   isOpen: boolean;
   onClose: () => void;
+  /** Open straight onto the saved-drafts list instead of the form. */
+  initialView?: ModalView;
 }
 
 interface ParsedIngredient {
@@ -27,16 +35,69 @@ interface InstructionStep {
 
 interface RawIngredient { qty?: number; unit?: string; item?: string; note?: string }
 interface RawInstruction { text?: string }
-interface ApiError { response?: { data?: { detail?: string } } }
+interface ApiError { response?: { status?: number; data?: { detail?: string } } }
+
+interface DraftFormState {
+  title: string;
+  description: string;
+  yieldAmount: number | '';
+  prepTime: number | '';
+  cookTime: number | '';
+  tags: string[];
+  ingredients: ParsedIngredient[];
+  instructions: InstructionStep[];
+  sourceUrl: string;
+}
+
+/** The form, reduced to what a draft needs to come back exactly as it was left. */
+function buildDraftPayload(form: DraftFormState) {
+  return {
+    title: form.title,
+    description: form.description,
+    yieldAmount: form.yieldAmount,
+    prepTime: form.prepTime,
+    cookTime: form.cookTime,
+    tags: form.tags,
+    ingredients: form.ingredients.map(({ raw, qty, unit, item, note }) => ({ raw, qty, unit, item, note })),
+    // Step photos are uploaded before the draft is written, so only the path
+    // travels — a File would not survive the round trip.
+    instructions: form.instructions.map((step) => ({ text: step.text, image_path: step.image_path ?? null })),
+    sourceUrl: form.sourceUrl,
+  };
+}
 
 type TabMode = 'manual' | 'url' | 'photo';
+// The panel shows either the recipe editor or the list of saved drafts.
+type ModalView = 'form' | 'drafts';
+type DraftStatus = 'idle' | 'saving' | 'saved' | 'error';
+
+// How long the form must sit still before it autosaves. Long enough that normal
+// typing produces one request per pause, short enough that little is at risk.
+const AUTOSAVE_DEBOUNCE_MS = 1500;
 type UrlStep = 'input' | 'loading' | 'error' | 'editing';
 type PhotoStep = 'upload' | 'loading' | 'error' | 'editing';
 
-export default function AddRecipeModal({ isOpen, onClose }: AddRecipeModalProps) {
+export default function AddRecipeModal({ isOpen, onClose, initialView = 'form' }: AddRecipeModalProps) {
   const queryClient = useQueryClient();
   const [isVisible, setIsVisible] = useState(false);
   const [isRendered, setIsRendered] = useState(false);
+
+  // Editor vs. saved-drafts list
+  const [view, setView] = useState<ModalView>(initialView);
+
+  // Draft autosave state. draftId is null until the form has enough in it to be
+  // worth saving; from then on every pause in typing updates the same row.
+  const [draftId, setDraftId] = useState<string | null>(null);
+  const [draftStatus, setDraftStatus] = useState<DraftStatus>('idle');
+  const [resumingId, setResumingId] = useState<string | null>(null);
+  // Serialized payload of the last successful save — the dirty check that keeps
+  // autosave from writing the same bytes over and over.
+  const lastSavedRef = useRef<string | null>(null);
+  // Guards against two autosaves overlapping (and, on a first save, against
+  // creating two rows for one draft).
+  const savingRef = useRef(false);
+  // Set when an edit lands mid-save; drains as soon as the in-flight save ends.
+  const pendingSaveRef = useRef(false);
 
   // Tab mode
   const [tabMode, setTabMode] = useState<TabMode>('manual');
@@ -76,8 +137,10 @@ export default function AddRecipeModal({ isOpen, onClose }: AddRecipeModalProps)
   // Handle animation states
   useEffect(() => {
     if (isOpen) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing render state with animation timing
+      // Render state is synced to the animation timing; the view is re-synced to
+      // the prop so each open lands on whichever panel the caller asked for.
       setIsRendered(true);
+      setView(initialView);
       const t = setTimeout(() => setIsVisible(true), 10);
       return () => clearTimeout(t);
     } else {
@@ -85,13 +148,23 @@ export default function AddRecipeModal({ isOpen, onClose }: AddRecipeModalProps)
       const timer = setTimeout(() => setIsRendered(false), 300);
       return () => clearTimeout(timer);
     }
-  }, [isOpen]);
+  }, [isOpen, initialView]);
 
   const mutation = useMutation({
     mutationFn: createRecipe,
-    onSuccess: () => {
+    onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ['recipes'] });
       queryClient.invalidateQueries({ queryKey: ['tags'] });
+      // The draft became a real recipe, so retire it. Not worth failing the save
+      // over — a stranded draft is visible in the list and deletable by hand.
+      if (draftId) {
+        try {
+          await deleteRecipeDraft(draftId);
+        } catch {
+          // already gone, or the network blinked
+        }
+        queryClient.invalidateQueries({ queryKey: DRAFTS_QUERY_KEY });
+      }
       resetForm();
       onClose();
     },
@@ -122,6 +195,211 @@ export default function AddRecipeModal({ isOpen, onClose }: AddRecipeModalProps)
     setPhotoPages((prev) => { prev.forEach((p) => URL.revokeObjectURL(p.previewUrl)); return []; });
     setPhotoError('');
     setIsDragging(false);
+    setDraftId(null);
+    setDraftStatus('idle');
+    setView('form');
+    lastSavedRef.current = null;
+  };
+
+  // -- Draft autosave ---------------------------------------------------------
+  // The editor writes itself to the server a beat after the user stops typing,
+  // so closing the tab mid-recipe costs nothing. Only the editor is autosaved --
+  // the URL and photo panels are just ways of filling it in.
+
+  const isEditingPhase = tabMode === 'manual' || urlStep === 'editing' || photoStep === 'editing';
+
+  const { data: drafts } = useQuery<RecipeDraftSummary[]>({
+    queryKey: DRAFTS_QUERY_KEY,
+    queryFn: getRecipeDrafts,
+    enabled: isOpen,
+  });
+  const draftCount = drafts?.length ?? 0;
+
+  const draftPayload = useMemo(
+    () => buildDraftPayload({
+      title, description, yieldAmount, prepTime, cookTime, tags,
+      ingredients, instructions, sourceUrl: importedUrl,
+    }),
+    [title, description, yieldAmount, prepTime, cookTime, tags, ingredients, instructions, importedUrl],
+  );
+  const serializedPayload = useMemo(() => JSON.stringify(draftPayload), [draftPayload]);
+
+  // An untouched form is not a draft. Yield is excluded because it starts at 1.
+  const hasDraftContent =
+    title.trim() !== '' || description.trim() !== '' || tags.length > 0 ||
+    ingredients.length > 0 || instructions.length > 0 ||
+    prepTime !== '' || cookTime !== '';
+
+  /**
+   * Upload any step photos still held as File objects and swap them for the
+   * returned paths, so the draft stores something that outlives the page.
+   * Returns the updated steps, or null if there was nothing to upload.
+   */
+  const persistStepImages = async (): Promise<InstructionStep[] | null> => {
+    if (!instructions.some((step) => step.image)) return null;
+    const next = await Promise.all(instructions.map(async (step) => {
+      if (!step.image) return step;
+      try {
+        const res = await uploadRecipeImage(step.image);
+        // Dropping the File is what keeps each photo from uploading twice; the
+        // local preview URL stays so the step list doesn't flicker.
+        return { ...step, image: null, image_path: res.url };
+      } catch {
+        // Leave it pending -- the next autosave, or the final save, retries.
+        return step;
+      }
+    }));
+    setInstructions(next);
+    return next;
+  };
+
+  const saveDraft = async () => {
+    if (savingRef.current) {
+      // Coalesce: whatever changed during the in-flight save goes out right after.
+      pendingSaveRef.current = true;
+      return;
+    }
+    savingRef.current = true;
+    setDraftStatus('saving');
+    try {
+      const uploaded = await persistStepImages();
+      const payload = uploaded
+        ? { ...draftPayload, instructions: uploaded.map((step) => ({ text: step.text, image_path: step.image_path ?? null })) }
+        : draftPayload;
+      const body = { title: title.trim() || null, payload };
+      const saved: RecipeDraft = draftId
+        ? await updateRecipeDraft(draftId, body)
+        : await createRecipeDraft(body);
+      setDraftId(saved.id);
+      lastSavedRef.current = JSON.stringify(payload);
+      setDraftStatus('saved');
+      queryClient.invalidateQueries({ queryKey: DRAFTS_QUERY_KEY });
+    } catch (err) {
+      // A draft deleted elsewhere 404s. Forget the id so the next pass starts a
+      // fresh row instead of retrying one that no longer exists.
+      if ((err as ApiError)?.response?.status === 404) {
+        setDraftId(null);
+        lastSavedRef.current = null;
+      }
+      console.error('Failed to autosave draft', err);
+      setDraftStatus('error');
+    } finally {
+      savingRef.current = false;
+      if (pendingSaveRef.current) {
+        pendingSaveRef.current = false;
+        void saveDraftRef.current?.();
+      }
+    }
+  };
+
+  // Latest-value ref, so the debounce timer and the close handler always call
+  // the current closure without re-arming on every keystroke.
+  const saveDraftRef = useRef<(() => Promise<void>) | null>(null);
+  useEffect(() => { saveDraftRef.current = saveDraft; });
+
+  const draftIsDirty = hasDraftContent && serializedPayload !== lastSavedRef.current;
+
+  useEffect(() => {
+    if (!isOpen || view !== 'form' || !isEditingPhase || !draftIsDirty) return;
+    const timer = setTimeout(() => { void saveDraftRef.current?.(); }, AUTOSAVE_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [isOpen, view, isEditingPhase, draftIsDirty, serializedPayload]);
+
+  /** Close the panel, flushing anything still inside the debounce window. */
+  const handleClose = () => {
+    if (view === 'form' && isEditingPhase && draftIsDirty) {
+      void saveDraftRef.current?.();
+    }
+    onClose();
+  };
+
+  /** Load a saved draft back into the editor. */
+  const resumeDraft = async (id: string) => {
+    // Already the draft in the editor — just show it, and keep any edits made
+    // since it was loaded rather than refetching over the top of them.
+    if (id === draftId) {
+      setView('form');
+      return;
+    }
+    setResumingId(id);
+    try {
+      const draft: RecipeDraft = await getRecipeDraft(id);
+      const saved = draft.payload ?? {};
+      const nextIngredients: ParsedIngredient[] = (saved.ingredients ?? []).map((ing) => ({
+        raw: (ing as ParsedIngredient).raw ?? `${ing.qty ?? ''} ${ing.unit ?? ''} ${ing.item ?? ''}`.trim(),
+        qty: ing.qty ?? 0,
+        unit: ing.unit ?? '',
+        item: ing.item ?? '',
+        note: ing.note ?? '',
+      }));
+      const nextInstructions: InstructionStep[] = (saved.instructions ?? []).map((step) => ({
+        text: step.text ?? '',
+        image: null,
+        image_path: step.image_path ?? undefined,
+        imagePreviewUrl: mediaUrl(step.image_path),
+      }));
+      const nextForm: DraftFormState = {
+        title: saved.title ?? '',
+        description: saved.description ?? '',
+        yieldAmount: saved.yieldAmount ?? 1,
+        prepTime: saved.prepTime ?? '',
+        cookTime: saved.cookTime ?? '',
+        tags: saved.tags ?? [],
+        ingredients: nextIngredients,
+        instructions: nextInstructions,
+        sourceUrl: saved.sourceUrl ?? '',
+      };
+
+      setTitle(nextForm.title);
+      setDescription(nextForm.description);
+      setYieldAmount(nextForm.yieldAmount);
+      setPrepTime(nextForm.prepTime);
+      setCookTime(nextForm.cookTime);
+      setTags(nextForm.tags);
+      setIngredients(nextIngredients);
+      setInstructions(nextInstructions);
+      setImportedUrl(nextForm.sourceUrl);
+      setIngredientInput('');
+      setInstructionInput('');
+      setInstructionImage(null);
+      // A resumed draft is edited by hand regardless of how it started out.
+      setTabMode('manual');
+      setUrlStep('input');
+      setPhotoStep('upload');
+      setDraftId(draft.id);
+      setDraftStatus('saved');
+      // Seed the dirty check with what we just loaded, so resuming a draft
+      // doesn't immediately write it straight back unchanged.
+      lastSavedRef.current = JSON.stringify(buildDraftPayload(nextForm));
+      setView('form');
+    } catch (err) {
+      console.error('Failed to open draft', err);
+      alert('Could not open that draft.');
+    } finally {
+      setResumingId(null);
+    }
+  };
+
+  /** Throw away the draft the editor is currently bound to, form and all. */
+  const discardDraft = async () => {
+    if (!draftId) return;
+    if (!confirm('Discard this draft? Everything typed here will be deleted.')) return;
+    try {
+      await deleteRecipeDraft(draftId);
+    } catch (err) {
+      console.error('Failed to discard draft', err);
+    }
+    queryClient.invalidateQueries({ queryKey: DRAFTS_QUERY_KEY });
+    resetForm();
+    onClose();
+  };
+
+  /** A draft deleted from the list while it was open in the editor. */
+  const handleDraftDeleted = (deletedId: string) => {
+    if (deletedId !== draftId) return;
+    // Clear the form rather than let autosave quietly recreate what was deleted.
+    resetForm();
+    setView('drafts');
   };
 
   const handleAddPage = useCallback((file: File) => {
@@ -316,14 +594,12 @@ export default function AddRecipeModal({ isOpen, onClose }: AddRecipeModalProps)
 
   if (!isRendered) return null;
 
-  const isEditingPhase = tabMode === 'manual' || urlStep === 'editing' || photoStep === 'editing';
-
   return (
     <>
       {/* Backdrop */}
       <div 
         className={`fixed inset-0 bg-black/40 backdrop-blur-sm z-40 transition-opacity duration-300 ${isVisible ? 'opacity-100' : 'opacity-0'}`}
-        onClick={onClose}
+        onClick={handleClose}
         aria-hidden="true"
       />
       
@@ -335,12 +611,42 @@ export default function AddRecipeModal({ isOpen, onClose }: AddRecipeModalProps)
           {/* Header */}
           <div className="sticky top-0 bg-[#FDFBF7]/95 backdrop-blur-md px-6 py-5 border-b border-gray-200/60 z-10">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-2xl font-serif text-[#CC5500]">Add to Hearth</h2>
-              <button onClick={onClose} className="p-2 -mr-2 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-full transition-colors">
-                <X className="w-6 h-6" />
-              </button>
+              <div className="flex items-center gap-1 min-w-0">
+                {view === 'drafts' && (
+                  <button
+                    onClick={() => setView('form')}
+                    aria-label="Back to the recipe"
+                    className="p-2 -ml-2 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-full transition-colors"
+                  >
+                    <ArrowLeft className="w-5 h-5" />
+                  </button>
+                )}
+                <h2 className="text-2xl font-serif text-[#CC5500] truncate">
+                  {view === 'drafts' ? 'Saved drafts' : 'Add to Hearth'}
+                </h2>
+              </div>
+              <div className="flex items-center gap-1">
+                {view === 'form' && (
+                  <button
+                    onClick={() => setView('drafts')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-500 hover:text-[#CC5500] hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    <FileText className="w-4 h-4" />
+                    Drafts
+                    {draftCount > 0 && (
+                      <span className="bg-[#CC5500]/10 text-[#CC5500] text-xs font-semibold rounded-full px-1.5 py-0.5 min-w-[1.25rem] text-center">
+                        {draftCount}
+                      </span>
+                    )}
+                  </button>
+                )}
+                <button onClick={handleClose} className="p-2 -mr-2 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-full transition-colors">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
             </div>
             {/* Tab Switcher */}
+            {view === 'form' && (
             <div className="flex bg-gray-100 rounded-xl p-1 gap-1">
               <button
                 onClick={() => { setTabMode('manual'); setUrlStep('input'); setUrlError(''); }}
@@ -379,12 +685,21 @@ export default function AddRecipeModal({ isOpen, onClose }: AddRecipeModalProps)
                 </button>
               )}
             </div>
+            )}
           </div>
 
           <div className="flex-1 p-6 space-y-8">
+            {view === 'drafts' && (
+              <DraftsPanel
+                onResume={resumeDraft}
+                onDeleted={handleDraftDeleted}
+                activeDraftId={draftId}
+                resumingId={resumingId}
+              />
+            )}
 
             {/* ── URL Import Panel ── */}
-            {tabMode === 'url' && urlStep !== 'editing' && (
+            {view === 'form' && tabMode === 'url' && urlStep !== 'editing' && (
               <section className="space-y-4">
                 <div className="text-center py-4">
                   <div className="w-14 h-14 bg-[#CC5500]/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
@@ -448,7 +763,7 @@ export default function AddRecipeModal({ isOpen, onClose }: AddRecipeModalProps)
             )}
 
             {/* ── Scraped banner (once editing) ── */}
-            {tabMode === 'url' && urlStep === 'editing' && (
+            {view === 'form' && tabMode === 'url' && urlStep === 'editing' && (
               <div className="flex items-center gap-3 bg-[#8A9A5B]/10 border border-[#8A9A5B]/25 rounded-xl px-4 py-3">
                 <Link2 className="w-4 h-4 text-[#8A9A5B] shrink-0" />
                 <div className="flex-1 min-w-0">
@@ -465,7 +780,7 @@ export default function AddRecipeModal({ isOpen, onClose }: AddRecipeModalProps)
             )}
 
             {/* ── Photo Scan Panel ── */}
-            {tabMode === 'photo' && photoStep !== 'editing' && (
+            {view === 'form' && tabMode === 'photo' && photoStep !== 'editing' && (
               <section className="space-y-5">
                 <div className="text-center py-4">
                   <div className="w-14 h-14 bg-[#CC5500]/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
@@ -589,7 +904,7 @@ export default function AddRecipeModal({ isOpen, onClose }: AddRecipeModalProps)
             )}
 
             {/* ── Photo extracted banner (once editing) ── */}
-            {tabMode === 'photo' && photoStep === 'editing' && (
+            {view === 'form' && tabMode === 'photo' && photoStep === 'editing' && (
               <div className="flex items-center gap-3 bg-[#8A9A5B]/10 border border-[#8A9A5B]/25 rounded-xl px-4 py-3">
                 <Camera className="w-4 h-4 text-[#8A9A5B] shrink-0" />
                 <div className="flex-1 min-w-0">
@@ -608,7 +923,7 @@ export default function AddRecipeModal({ isOpen, onClose }: AddRecipeModalProps)
             )}
 
             {/* ── Recipe Form (always shown in manual mode; shown after scrape in url mode) ── */}
-            {isEditingPhase && (
+            {view === 'form' && isEditingPhase && (
               <>
                 {/* Story / About */}
                 <section className="space-y-4">
@@ -825,13 +1140,34 @@ export default function AddRecipeModal({ isOpen, onClose }: AddRecipeModalProps)
           </div>
 
           {/* Footer Actions */}
-          {isEditingPhase && (
-            <div className="sticky bottom-0 bg-[#FDFBF7]/95 backdrop-blur-md px-6 py-4 border-t border-gray-200/60 flex space-x-3">
-              <button 
-                onClick={onClose}
+          {view === 'form' && isEditingPhase && (
+            <div className="sticky bottom-0 bg-[#FDFBF7]/95 backdrop-blur-md px-6 py-4 border-t border-gray-200/60 space-y-3">
+              {/* Autosave status. Only shown once there's something to lose. */}
+              {(hasDraftContent || draftId) && (
+                <div className="flex items-center justify-between gap-3 text-xs">
+                  <span className="flex items-center gap-1.5 text-gray-400 min-w-0">
+                    {draftStatus === 'saving' && (<><Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" /> Saving draft...</>)}
+                    {draftStatus === 'saved' && (<><Check className="w-3.5 h-3.5 text-[#8A9A5B] shrink-0" /> Draft saved</>)}
+                    {draftStatus === 'error' && (<><AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0" /> <span className="text-red-500 truncate">Couldn&apos;t save the draft</span></>)}
+                    {draftStatus === 'idle' && (<><FileText className="w-3.5 h-3.5 shrink-0" /> Saves itself as you type</>)}
+                  </span>
+                  {draftId && (
+                    <button
+                      onClick={discardDraft}
+                      className="text-gray-400 hover:text-red-500 font-medium whitespace-nowrap transition-colors"
+                    >
+                      Discard draft
+                    </button>
+                  )}
+                </div>
+              )}
+
+              <div className="flex space-x-3">
+              <button
+                onClick={handleClose}
                 className="flex-1 px-6 py-3 border border-gray-200 text-gray-600 font-medium rounded-xl hover:bg-gray-50 transition-colors"
               >
-                Cancel
+                Close
               </button>
               <button 
                 onClick={handleSave}
@@ -840,6 +1176,7 @@ export default function AddRecipeModal({ isOpen, onClose }: AddRecipeModalProps)
               >
                 {mutation.isPending || isUploading ? 'Saving...' : 'Add Recipe'}
               </button>
+              </div>
             </div>
           )}
 

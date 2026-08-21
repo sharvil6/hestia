@@ -86,6 +86,37 @@ export interface RecipeCreate {
   tags: string[];
 }
 
+// ----- Recipe drafts ----------------------------------------------------------
+
+// A draft's saved form state. Mirrors the add-recipe form rather than the Recipe
+// shape: fields may be blank or half-typed, which is the whole point of a draft.
+export interface RecipeDraftPayload {
+  title: string;
+  description: string;
+  yieldAmount: number | '';
+  prepTime: number | '';
+  cookTime: number | '';
+  tags: string[];
+  ingredients: Ingredient[];
+  // Step photos are uploaded before the draft is saved, so only the path travels.
+  instructions: { text: string; image_path?: string | null }[];
+  sourceUrl: string;
+}
+
+// List row — no payload, so the drafts list stays cheap to fetch.
+export interface RecipeDraftSummary {
+  id: string;
+  title: string | null;
+  ingredient_count: number;
+  instruction_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RecipeDraft extends RecipeDraftSummary {
+  payload: Partial<RecipeDraftPayload>;
+}
+
 // ----- Meal plans -------------------------------------------------------------
 
 export type MealSlot = 'breakfast' | 'lunch' | 'dinner';

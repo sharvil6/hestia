@@ -33,7 +33,9 @@ export async function apiFetch(path: string, options: RequestInit = {}) {
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
     console.error(`[api] ${res.status} ${url}`, err);
-    throw Object.assign(new Error(err.detail || 'Request failed'), { response: { data: err } });
+    // `status` lets callers distinguish "gone" (404) from "broken" without
+    // string-matching the detail message.
+    throw Object.assign(new Error(err.detail || 'Request failed'), { response: { status: res.status, data: err } });
   }
   console.log(`[api] ${res.status} ${url}`);
   return res.json();
@@ -77,6 +79,32 @@ export const updateRecipeAnnotation = (annotationId: string, formData: FormData)
 
 export const deleteRecipeAnnotation = (annotationId: string) =>
   apiFetch(`/recipes/annotations/${annotationId}`, { method: 'DELETE' });
+
+// ----- Recipe drafts ---------------------------------------------------------
+// Autosaved, in-progress recipes. Private to the signed-in user and invisible
+// to the shared cookbook until they're published as a real recipe.
+
+export const getRecipeDrafts = () => apiFetch('/recipes/drafts/');
+
+export const getRecipeDraft = (id: string) =>
+  apiFetch(`/recipes/drafts/${encodeURIComponent(id)}`);
+
+export const createRecipeDraft = (draft: { title?: string | null; payload: object }) =>
+  apiFetch('/recipes/drafts/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(draft),
+  });
+
+export const updateRecipeDraft = (id: string, draft: { title?: string | null; payload: object }) =>
+  apiFetch(`/recipes/drafts/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(draft),
+  });
+
+export const deleteRecipeDraft = (id: string) =>
+  apiFetch(`/recipes/drafts/${encodeURIComponent(id)}`, { method: 'DELETE' });
 
 // ----- Public sharing --------------------------------------------------------
 

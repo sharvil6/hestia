@@ -3,12 +3,13 @@
 import { useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
-import { getRecipes } from '@/lib/api'
+import { getRecipes, getRecipeDrafts } from '@/lib/api'
 import { mediaUrl } from '@/lib/media'
 import { useCurrentUser } from '@/lib/currentUser'
-import type { Recipe } from '@hestia/shared/types'
+import type { Recipe, RecipeDraftSummary } from '@hestia/shared/types'
 import Link from 'next/link'
 import AddRecipeModal from '@/components/AddRecipeModal'
+import { DRAFTS_QUERY_KEY } from '@/components/DraftsPanel'
 import AppNav from '@/components/AppNav'
 import {
   Flame,
@@ -23,6 +24,7 @@ import {
   Zap,
   Heart,
   Sparkles,
+  FileText,
   Tag as TagIcon,
   X,
   type LucideIcon,
@@ -473,6 +475,9 @@ const RAIL_LIMIT = 12
 export default function Home() {
   const router = useRouter()
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
+  // Which view the add panel opens on — 'drafts' when arriving via the
+  // unfinished-recipes banner.
+  const [addModalView, setAddModalView] = useState<'form' | 'drafts'>('form')
   const [query, setQuery] = useState('')
   const [activeTag, setActiveTag] = useState<string>('all')
   const { data: currentUser } = useCurrentUser()
@@ -481,6 +486,14 @@ export default function Home() {
     queryKey: ['recipes'],
     queryFn: getRecipes,
   })
+
+  // Unfinished recipes the user autosaved earlier. Surfaced on the home page
+  // so a draft doesn't quietly rot behind the add button.
+  const { data: drafts } = useQuery<RecipeDraftSummary[]>({
+    queryKey: DRAFTS_QUERY_KEY,
+    queryFn: getRecipeDrafts,
+  })
+  const draftCount = drafts?.length ?? 0
 
   // Top tags by frequency → drives the chip row and the per-collection rails.
   const topTags = useMemo(() => {
@@ -627,6 +640,48 @@ export default function Home() {
           </section>
         )}
 
+        {/* Unfinished drafts */}
+        {draftCount > 0 && (
+          <button
+            onClick={() => { setAddModalView('drafts'); setIsAddModalOpen(true) }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              width: '100%',
+              marginBottom: '16px',
+              padding: '12px 16px',
+              background: 'var(--color-surface-raised)',
+              border: '1px dashed var(--color-border)',
+              borderRadius: 'var(--radius-xl)',
+              cursor: 'pointer',
+              textAlign: 'left',
+              color: 'var(--color-ink-secondary)',
+              fontSize: '14px',
+              transition: `border-color var(--duration-fast) var(--ease-standard),
+                           background var(--duration-fast) var(--ease-standard)`,
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.borderColor = 'var(--color-brand)'
+              e.currentTarget.style.background = 'var(--color-brand-muted)'
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.borderColor = 'var(--color-border)'
+              e.currentTarget.style.background = 'var(--color-surface-raised)'
+            }}
+          >
+            <FileText size={16} style={{ color: 'var(--color-brand)', flexShrink: 0 }} />
+            <span style={{ flex: 1, minWidth: 0 }}>
+              {draftCount === 1
+                ? <>You have <strong style={{ fontWeight: 600, color: 'var(--color-ink)' }}>an unfinished recipe</strong></>
+                : <><strong style={{ fontWeight: 600, color: 'var(--color-ink)' }}>{draftCount} unfinished recipes</strong> waiting</>}
+            </span>
+            <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--color-brand)', whiteSpace: 'nowrap' }}>
+              Pick up where you left off
+            </span>
+          </button>
+        )}
+
         {/* Search */}
         <section style={{ marginBottom: '16px', position: 'relative' }}>
           <Search
@@ -713,7 +768,7 @@ export default function Home() {
               Add your first recipe — by hand, from a URL, or by scanning a recipe card.
             </p>
             <button
-              onClick={() => setIsAddModalOpen(true)}
+              onClick={() => { setAddModalView('form'); setIsAddModalOpen(true) }}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -807,7 +862,7 @@ export default function Home() {
 
       {/* FAB */}
       <button
-        onClick={() => setIsAddModalOpen(true)}
+        onClick={() => { setAddModalView('form'); setIsAddModalOpen(true) }}
         style={{
           position: 'fixed',
           bottom: '24px',
@@ -846,7 +901,11 @@ export default function Home() {
         <Plus size={24} strokeWidth={2} />
       </button>
 
-      <AddRecipeModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} />
+      <AddRecipeModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        initialView={addModalView}
+      />
     </main>
   )
 }
