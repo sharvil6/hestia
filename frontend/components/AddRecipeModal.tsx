@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { X, Plus, Trash2, Clock, Users, BookOpen, Link2, PenLine, Loader2, AlertCircle, Image as ImageIcon, Camera, Upload, FileText, ArrowLeft, Check } from 'lucide-react';
+import { X, Plus, Trash2, Pencil, Clock, Users, BookOpen, Link2, PenLine, Loader2, AlertCircle, Image as ImageIcon, Camera, Upload, FileText, ArrowLeft, Check } from 'lucide-react';
 import {
   createRecipe, scrapeRecipePreview, uploadRecipeImage, visionRecipePreview,
   createRecipeDraft, updateRecipeDraft, deleteRecipeDraft, getRecipeDraft, getRecipeDrafts,
@@ -173,6 +173,15 @@ export default function AddRecipeModal({ isOpen, onClose, initialView = 'form' }
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
+  // Inline editing of already-added rows. Only one row of either list is open
+  // at a time, so a single draft value per list is enough. `null` means the
+  // list is being displayed rather than edited.
+  const [editingIngredientIdx, setEditingIngredientIdx] = useState<number | null>(null);
+  const [editingIngredientInput, setEditingIngredientInput] = useState('');
+  const [editingStepIdx, setEditingStepIdx] = useState<number | null>(null);
+  const [editingStep, setEditingStep] = useState<InstructionStep | null>(null);
+  const editStepFileInputRef = React.useRef<HTMLInputElement>(null);
+
   // Why the last publish attempt failed. Shown in the sticky footer, right above
   // the button that failed, so it is visible wherever the panel is scrolled.
   const [publishError, setPublishError] = useState<string | null>(null);
@@ -224,6 +233,14 @@ export default function AddRecipeModal({ isOpen, onClose, initialView = 'form' }
     }
   });
 
+  /** Close any open row editor -- the lists underneath are about to change. */
+  const clearRowEditors = () => {
+    setEditingIngredientIdx(null);
+    setEditingIngredientInput('');
+    setEditingStepIdx(null);
+    setEditingStep(null);
+  };
+
   const resetForm = () => {
     setTitle('');
     setDescription('');
@@ -235,6 +252,7 @@ export default function AddRecipeModal({ isOpen, onClose, initialView = 'form' }
     setInstructions([]);
     setInstructionInput('');
     setInstructionImage(null);
+    clearRowEditors();
     setTags([]);
     setTabMode('manual');
     setUrlInput('');
@@ -415,6 +433,7 @@ export default function AddRecipeModal({ isOpen, onClose, initialView = 'form' }
       setIngredientInput('');
       setInstructionInput('');
       setInstructionImage(null);
+      clearRowEditors();
       // A resumed draft is edited by hand regardless of how it started out.
       setTabMode('manual');
       setUrlStep('input');
@@ -514,6 +533,7 @@ export default function AddRecipeModal({ isOpen, onClose, initialView = 'form' }
       setIngredients(ingList);
       const stepList: InstructionStep[] = (data.instructions || []).map((inst: RawInstruction) => ({ text: inst.text || '' }));
       setInstructions(stepList);
+      clearRowEditors();
       setPhotoStep('editing');
     } catch (err) {
       setPhotoError(errorMessage(err, 'Could not extract a recipe from that photo. Try a clearer image.'));
@@ -540,13 +560,17 @@ export default function AddRecipeModal({ isOpen, onClose, initialView = 'form' }
     }
   };
 
-  const addIngredient = () => {
-    if (!ingredientInput.trim()) return;
+  /**
+   * Split a free-typed line into the structured shape the API wants. Shared by
+   * adding a new ingredient and by re-parsing one the cook has edited.
+   */
+  const parseIngredient = (input: string): ParsedIngredient => {
+    const trimmed = input.trim();
     const regex = /^([\d\.\/]+(?: \d+\/\d+)?)\s*(?:(cup|cups|tbsp|tsp|tablespoon|tablespoons|teaspoon|teaspoons|oz|ounce|ounces|g|gram|grams|mg|kg|ml|l|lb|lbs|pound|pounds|pinch|dash|pt|qt|gallon|gallons|stick|sticks|can|cans|box|boxes)\b)?\s*(.*?)(?:,\s*(.*))?$/i;
-    const match = ingredientInput.trim().match(regex);
+    const match = trimmed.match(regex);
     let qtyStr = '1';
     let unit = '';
-    let item = ingredientInput.trim();
+    let item = trimmed;
     let note = '';
     if (match) {
       qtyStr = match[1] || '1';
@@ -555,12 +579,50 @@ export default function AddRecipeModal({ isOpen, onClose, initialView = 'form' }
       note = match[4] || '';
     }
     if (!match) {
-      item = ingredientInput.trim();
+      item = trimmed;
       qtyStr = '0';
     }
-    const qty = parseFraction(qtyStr);
-    setIngredients([...ingredients, { raw: ingredientInput, qty, unit, item, note }]);
+    return { raw: input, qty: parseFraction(qtyStr), unit, item, note };
+  };
+
+  /**
+   * Rebuild the editable line for an ingredient already in the list. Built from
+   * the parsed parts rather than `raw` so it always matches what the row shows
+   * -- scraped ingredients arrive with a `raw` that drops the note.
+   */
+  const ingredientToInput = (ing: ParsedIngredient): string => {
+    const head = [ing.qty > 0 ? String(ing.qty) : '', ing.unit, ing.item].filter(Boolean).join(' ');
+    return ing.note ? `${head}, ${ing.note}` : head;
+  };
+
+  const addIngredient = () => {
+    if (!ingredientInput.trim()) return;
+    setIngredients([...ingredients, parseIngredient(ingredientInput)]);
     setIngredientInput('');
+  };
+
+  const startEditIngredient = (idx: number) => {
+    setEditingIngredientIdx(idx);
+    setEditingIngredientInput(ingredientToInput(ingredients[idx]));
+  };
+
+  const cancelEditIngredient = () => {
+    setEditingIngredientIdx(null);
+    setEditingIngredientInput('');
+  };
+
+  const saveEditIngredient = () => {
+    if (editingIngredientIdx === null || !editingIngredientInput.trim()) return;
+    const parsed = parseIngredient(editingIngredientInput);
+    setIngredients(ingredients.map((ing, i) => (i === editingIngredientIdx ? parsed : ing)));
+    cancelEditIngredient();
+  };
+
+  const removeIngredient = (idx: number) => {
+    // Indices shift under an open editor, so close it rather than leave it
+    // pointing at the wrong row.
+    cancelEditIngredient();
+    setIngredients(ingredients.filter((_, i) => i !== idx));
   };
 
   const addInstruction = () => {
@@ -572,6 +634,59 @@ export default function AddRecipeModal({ isOpen, onClose, initialView = 'form' }
     }]);
     setInstructionInput('');
     setInstructionImage(null);
+  };
+
+  const startEditStep = (idx: number) => {
+    setEditingStepIdx(idx);
+    setEditingStep({ ...instructions[idx] });
+  };
+
+  /** Drop a preview URL this editor minted, leaving the saved list's alone. */
+  const revokeDraftPreview = (draft: InstructionStep | null, idx: number | null) => {
+    if (!draft?.image || !draft.imagePreviewUrl) return;
+    if (idx !== null && instructions[idx]?.image === draft.image) return;
+    URL.revokeObjectURL(draft.imagePreviewUrl);
+  };
+
+  const cancelEditStep = () => {
+    revokeDraftPreview(editingStep, editingStepIdx);
+    setEditingStepIdx(null);
+    setEditingStep(null);
+  };
+
+  const setEditStepImage = (file: File | null) => {
+    if (!editingStep) return;
+    revokeDraftPreview(editingStep, editingStepIdx);
+    setEditingStep({
+      ...editingStep,
+      image: file,
+      imagePreviewUrl: file ? URL.createObjectURL(file) : undefined,
+      // Choosing or clearing a photo drops whatever was already uploaded here.
+      image_path: undefined,
+    });
+  };
+
+  const saveEditStep = () => {
+    if (editingStepIdx === null || !editingStep) return;
+    const text = editingStep.text.trim();
+    if (!text && !editingStep.image && !editingStep.image_path) return;
+    const idx = editingStepIdx;
+    const draft = { ...editingStep, text };
+    setInstructions(instructions.map((step, i) => {
+      if (i !== idx) return step;
+      // The row's own preview is dead once the draft's replaces it.
+      if (step.image && step.image !== draft.image && step.imagePreviewUrl) {
+        URL.revokeObjectURL(step.imagePreviewUrl);
+      }
+      return draft;
+    }));
+    setEditingStepIdx(null);
+    setEditingStep(null);
+  };
+
+  const removeInstruction = (idx: number) => {
+    cancelEditStep();
+    setInstructions(instructions.filter((_, i) => i !== idx));
   };
 
   // -- URL Import --
@@ -604,6 +719,7 @@ export default function AddRecipeModal({ isOpen, onClose, initialView = 'form' }
       // Map scraped instructions
       const stepList: InstructionStep[] = (data.instructions || []).map((inst: RawInstruction) => ({ text: inst.text || '' }));
       setInstructions(stepList);
+      clearRowEditors();
 
       setUrlStep('editing');
     } catch (err) {
@@ -1095,22 +1211,71 @@ export default function AddRecipeModal({ isOpen, onClose, initialView = 'form' }
                     <ul className="space-y-2 mb-4">
                       {ingredients.map((ing, idx) => (
                         <li key={idx} className="flex items-center justify-between bg-white border border-gray-100 p-3 rounded-xl shadow-sm group">
-                          <div className="flex items-center space-x-3">
-                            <div className="w-2 h-2 rounded-full bg-[#8A9A5B]/40" />
-                            <div>
-                               <span className="font-semibold text-gray-700">
-                                 {ing.qty > 0 ? ing.qty : ''} {ing.unit}
-                               </span>{' '}
-                               <span className="text-gray-600">{ing.item}</span>
-                               {ing.note && <span className="text-gray-400 ml-1 italic text-sm">, {ing.note}</span>}
+                          {editingIngredientIdx === idx ? (
+                            <div className="flex items-center gap-2 w-full">
+                              <input
+                                type="text"
+                                autoFocus
+                                value={editingIngredientInput}
+                                onChange={(e) => setEditingIngredientInput(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') { e.preventDefault(); saveEditIngredient(); }
+                                  if (e.key === 'Escape') { e.preventDefault(); cancelEditIngredient(); }
+                                }}
+                                aria-label={`Edit ingredient ${idx + 1}`}
+                                className="flex-1 min-w-0 bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#8A9A5B]/50 focus:border-[#8A9A5B] outline-none"
+                              />
+                              <button
+                                onClick={saveEditIngredient}
+                                disabled={!editingIngredientInput.trim()}
+                                aria-label="Save ingredient"
+                                className="text-[#8A9A5B] hover:bg-[#8A9A5B]/10 p-1.5 rounded-md transition-colors disabled:opacity-40"
+                              >
+                                <Check className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={cancelEditIngredient}
+                                aria-label="Cancel editing ingredient"
+                                className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 p-1.5 rounded-md transition-colors"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
                             </div>
-                          </div>
-                          <button 
-                            onClick={() => setIngredients(ingredients.filter((_, i) => i !== idx))}
-                            className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => startEditIngredient(idx)}
+                                aria-label={`Edit ingredient ${idx + 1}`}
+                                className="flex items-center space-x-3 text-left min-w-0 flex-1 cursor-text"
+                              >
+                                <div className="w-2 h-2 shrink-0 rounded-full bg-[#8A9A5B]/40" />
+                                <div>
+                                   <span className="font-semibold text-gray-700">
+                                     {ing.qty > 0 ? ing.qty : ''} {ing.unit}
+                                   </span>{' '}
+                                   <span className="text-gray-600">{ing.item}</span>
+                                   {ing.note && <span className="text-gray-400 ml-1 italic text-sm">, {ing.note}</span>}
+                                </div>
+                              </button>
+                              <div className="flex items-center gap-1 shrink-0 opacity-40 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                                <button
+                                  onClick={() => startEditIngredient(idx)}
+                                  aria-label={`Edit ingredient ${idx + 1}`}
+                                  className="text-gray-300 hover:text-[#8A9A5B] p-1 rounded-md transition-colors"
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => removeIngredient(idx)}
+                                  aria-label={`Remove ingredient ${idx + 1}`}
+                                  className="text-gray-300 hover:text-red-500 p-1 rounded-md transition-colors"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </>
+                          )}
                         </li>
                       ))}
                     </ul>
@@ -1150,24 +1315,107 @@ export default function AddRecipeModal({ isOpen, onClose, initialView = 'form' }
                           <div className="w-8 h-8 shrink-0 bg-[#CC5500]/10 text-[#CC5500] font-semibold rounded-full flex items-center justify-center text-sm">
                             {idx + 1}
                           </div>
-                          <div className="flex-1">
-                            <p className="text-gray-700 text-sm leading-relaxed mt-1">
-                              {step.text}
-                            </p>
-                            {step.imagePreviewUrl && (
-                              <img src={step.imagePreviewUrl} alt={`Step ${idx + 1}`} className="mt-2 max-h-40 w-auto rounded-md border border-gray-200 object-cover" />
-                            )}
-                          </div>
-                          <button 
-                            onClick={() => setInstructions(instructions.filter((_, i) => i !== idx))}
-                            className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity self-start"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          {editingStepIdx === idx && editingStep ? (
+                            <div className="flex-1 min-w-0 flex flex-col gap-2">
+                              <textarea
+                                autoFocus
+                                value={editingStep.text}
+                                onChange={(e) => setEditingStep({ ...editingStep, text: e.target.value })}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEditStep(); }
+                                  if (e.key === 'Escape') { e.preventDefault(); cancelEditStep(); }
+                                }}
+                                aria-label={`Edit step ${idx + 1}`}
+                                className="w-full min-h-[4.5rem] bg-white border border-gray-200 rounded-lg p-3 text-sm focus:ring-2 focus:ring-[#8A9A5B]/50 focus:border-[#8A9A5B] outline-none resize-none"
+                              />
+                              {editingStep.imagePreviewUrl && (
+                                <div className="relative inline-block w-fit">
+                                  <img src={editingStep.imagePreviewUrl} alt={`Step ${idx + 1}`} className="max-h-32 w-auto rounded-md border border-gray-200 object-cover" />
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditStepImage(null)}
+                                    aria-label="Remove step photo"
+                                    className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full p-0.5 shadow-sm hover:bg-red-600"
+                                  >
+                                    <X className="w-2.5 h-2.5" />
+                                  </button>
+                                </div>
+                              )}
+                              <div className="flex items-center justify-between gap-3">
+                                <button
+                                  type="button"
+                                  onClick={() => editStepFileInputRef.current?.click()}
+                                  className="text-gray-400 hover:text-[#8A9A5B] transition flex items-center gap-1.5 text-sm font-medium hover:bg-gray-50 px-2 py-1 rounded-md"
+                                >
+                                  <ImageIcon className="w-4 h-4" /> {editingStep.imagePreviewUrl ? 'Change Photo' : 'Add Photo'}
+                                </button>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={cancelEditStep}
+                                    className="px-3 py-1.5 text-sm font-medium text-gray-500 hover:bg-gray-100 rounded-lg transition-colors"
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    onClick={saveEditStep}
+                                    disabled={!editingStep.text.trim() && !editingStep.image && !editingStep.image_path}
+                                    className="px-3 py-1.5 text-sm font-medium text-white bg-[#8A9A5B] hover:bg-[#78864f] rounded-lg transition-colors disabled:opacity-40"
+                                  >
+                                    Save
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => startEditStep(idx)}
+                                aria-label={`Edit step ${idx + 1}`}
+                                className="flex-1 min-w-0 text-left cursor-text"
+                              >
+                                <p className="text-gray-700 text-sm leading-relaxed mt-1 whitespace-pre-wrap">
+                                  {step.text}
+                                </p>
+                                {step.imagePreviewUrl && (
+                                  <img src={step.imagePreviewUrl} alt={`Step ${idx + 1}`} className="mt-2 max-h-40 w-auto rounded-md border border-gray-200 object-cover" />
+                                )}
+                              </button>
+                              <div className="flex items-center gap-1 shrink-0 self-start opacity-40 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                                <button
+                                  onClick={() => startEditStep(idx)}
+                                  aria-label={`Edit step ${idx + 1}`}
+                                  className="text-gray-300 hover:text-[#CC5500] p-1 rounded-md transition-colors"
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => removeInstruction(idx)}
+                                  aria-label={`Remove step ${idx + 1}`}
+                                  className="text-gray-300 hover:text-red-500 p-1 rounded-md transition-colors"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </>
+                          )}
                         </li>
                       ))}
                     </ul>
                   )}
+
+                  {/* One picker serves the row editor -- only one step is open at a time. */}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    ref={editStepFileInputRef}
+                    onChange={(e) => {
+                      setEditStepImage(e.target.files?.[0] || null);
+                      // Let the same file be picked again after a remove.
+                      e.target.value = '';
+                    }}
+                  />
 
                   <div className="flex items-start space-x-2">
                     <div className="flex-1 flex flex-col gap-2">
