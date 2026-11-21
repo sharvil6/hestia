@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from typing import List, Optional
 import logging
 
@@ -54,6 +54,17 @@ def _touch(db: Session, recipe_id: str) -> None:
     )
 
 
+def _changed_at():
+    # Rows from before updated_at existed may have it NULL; fall back to created_at.
+    return func.coalesce(models.Recipe.updated_at, models.Recipe.created_at)
+
+
+def _filter_updated_since(q, since: datetime):
+    """Changed at or after `since`, oldest change first (a stable sync cursor)."""
+    changed = _changed_at()
+    return q.filter(changed >= _utc_naive(since)).order_by(changed, models.Recipe.id)
+
+
 @router.get("/", response_model=List[schemas.RecipeResponse])
 def read_recipes(
     skip: int = 0,
@@ -73,10 +84,78 @@ def read_recipes(
 ):
     q = db.query(models.Recipe)
     if updated_since is not None:
-        # Rows from before updated_at existed may have it NULL; fall back to created_at.
-        changed = func.coalesce(models.Recipe.updated_at, models.Recipe.created_at)
-        q = q.filter(changed >= _utc_naive(updated_since)).order_by(changed, models.Recipe.id)
+        q = _filter_updated_since(q, updated_since)
     return q.offset(skip).limit(limit).all()
+
+
+SUMMARY_DESCRIPTION_CHARS = 280
+
+
+def _summarize(r: models.Recipe) -> schemas.RecipeListItem:
+    desc = r.description
+    if desc and len(desc) > SUMMARY_DESCRIPTION_CHARS:
+        desc = desc[: SUMMARY_DESCRIPTION_CHARS - 1].rstrip() + "…"
+    known = [t for t in (r.prep_time, r.cook_time) if t is not None]
+    return schemas.RecipeListItem(
+        id=r.id,
+        title=r.title,
+        description=desc,
+        tags=sorted(t.name for t in r.tags),
+        prep_time=r.prep_time,
+        cook_time=r.cook_time,
+        total_time=sum(known) if known else None,
+        original_yield=r.original_yield,
+        ingredients=[
+            (i.get("item") or "").strip()
+            for i in (r.ingredients or [])
+            if isinstance(i, dict) and (i.get("item") or "").strip()
+        ],
+        cover_image=r.cover_image,
+        source_url=r.source_url,
+        created_at=r.created_at,
+        updated_at=r.updated_at,
+    )
+
+
+@router.get("/summary", response_model=List[schemas.RecipeListItem])
+def read_recipe_summaries(
+    tag: List[str] = Query(
+        [], description="Repeatable. Recipe must have every given tag (case-insensitive)."
+    ),
+    max_total_time: Optional[int] = Query(
+        None, ge=0,
+        description="Minutes. prep + cook must be <= this; recipes with no times are excluded.",
+    ),
+    q: Optional[str] = Query(None, description="Substring match on title or description."),
+    updated_since: Optional[datetime] = Query(
+        None, description="Same semantics as GET /recipes/?updated_since."
+    ),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(500, ge=1, le=1000),
+    db: Session = Depends(get_db),
+    _user=Depends(get_current_user),
+):
+    """Lightweight recipe list for planning agents: titles, tags, times and
+    ingredient names, without steps or annotations. Filters combine with AND.
+    Ordered oldest change first (stable for paging). With no filters it lists
+    every recipe, so a sync client can also diff ids to detect deletions."""
+    query = db.query(models.Recipe).options(selectinload(models.Recipe.tags))
+    for name in {t.strip().lower() for t in tag if t.strip()}:
+        query = query.filter(models.Recipe.tags.any(models.Tag.name == name))
+    if max_total_time is not None:
+        total = func.coalesce(models.Recipe.prep_time, 0) + func.coalesce(models.Recipe.cook_time, 0)
+        query = query.filter(
+            (models.Recipe.prep_time.isnot(None)) | (models.Recipe.cook_time.isnot(None)),
+            total <= max_total_time,
+        )
+    if q and q.strip():
+        like = f"%{q.strip()}%"
+        query = query.filter(models.Recipe.title.ilike(like) | models.Recipe.description.ilike(like))
+    if updated_since is not None:
+        query = _filter_updated_since(query, updated_since)
+    else:
+        query = query.order_by(_changed_at(), models.Recipe.id)
+    return [_summarize(r) for r in query.offset(skip).limit(limit).all()]
 
 @router.get("/public/{share_token}", response_model=schemas.PublicRecipeResponse)
 def read_public_recipe(share_token: str, db: Session = Depends(get_db)):
