@@ -43,6 +43,25 @@ class RecipeBase(BaseModel):
     ingredients: List[IngredientBase] = []
     instructions: List[InstructionBase] = []
 
+class RecipeListItem(BaseModel):
+    """Compact recipe for browsing/planning (GET /recipes/summary): enough for
+    an agent to choose meals without pulling steps or annotations. Fetch
+    /recipes/{id} for the full recipe."""
+    id: str
+    title: str
+    description: Optional[str] = None
+    tags: List[str] = []
+    prep_time: Optional[int] = None
+    cook_time: Optional[int] = None
+    total_time: Optional[int] = None  # prep + cook; None when neither is known
+    original_yield: Optional[int] = None
+    ingredients: List[str] = []  # item names only, in recipe order
+    cover_image: Optional[str] = None
+    source_url: Optional[str] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
 class RecipeCreate(RecipeBase):
     tags: List[str] = []
 

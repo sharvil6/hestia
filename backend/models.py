@@ -78,6 +78,27 @@ class Session(Base):
     device_label = Column(String, nullable=True)
 
 
+class ApiToken(Base):
+    """Long-lived, read-only bearer token for external agents (e.g. Muse).
+
+    Minted from the Security settings page. The raw token is shown once; only
+    the lookup prefix + Argon2 hash are stored. Never slides or expires on its
+    own — it lives until revoked. Scope is enforced in auth.deps: GET-only, and
+    only on the recipe/tag read routes.
+    """
+    __tablename__ = "api_tokens"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    id_prefix = Column(String, nullable=False, unique=True, index=True)
+    id_hash = Column(String, nullable=False)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    scope = Column(String, nullable=False, default="read")
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    last_used_at = Column(DateTime, nullable=True)
+    revoked_at = Column(DateTime, nullable=True)
+
+
 class AuthEvent(Base):
     """Append-only audit log of authentication activity — who signed in (or tried
     to), when, from what IP/country, and with which method. Powers the admin
