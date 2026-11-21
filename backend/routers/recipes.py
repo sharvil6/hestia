@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import logging
@@ -35,10 +38,45 @@ def resolve_tags(db: Session, tag_names: List[str]) -> List["models.Tag"]:
     return resolved
 
 
+def _utc_naive(dt: datetime) -> datetime:
+    """Timestamps are stored as naive UTC in SQLite. Normalise a client-supplied
+    value to match: aware → convert to UTC; naive → assume it's already UTC."""
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc)
+    return dt.replace(tzinfo=None)
+
+
+def _touch(db: Session, recipe_id: str) -> None:
+    """Bump a recipe's updated_at for changes the ORM's onupdate can't see —
+    tag-only edits (association table) and annotation changes (child rows)."""
+    db.query(models.Recipe).filter(models.Recipe.id == recipe_id).update(
+        {models.Recipe.updated_at: datetime.now(timezone.utc)}, synchronize_session=False
+    )
+
+
 @router.get("/", response_model=List[schemas.RecipeResponse])
-def read_recipes(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), _user=Depends(get_current_user)):
-    recipes = db.query(models.Recipe).offset(skip).limit(limit).all()
-    return recipes
+def read_recipes(
+    skip: int = 0,
+    limit: int = 100,
+    updated_since: Optional[datetime] = Query(
+        None,
+        description=(
+            "Only recipes created or changed at or after this ISO-8601 time "
+            "(naive values are treated as UTC). Results are then ordered oldest "
+            "change first, so a sync client can page with skip/limit and use the "
+            "largest updated_at it saw as its next cursor. Deletions are not "
+            "reported."
+        ),
+    ),
+    db: Session = Depends(get_db),
+    _user=Depends(get_current_user),
+):
+    q = db.query(models.Recipe)
+    if updated_since is not None:
+        # Rows from before updated_at existed may have it NULL; fall back to created_at.
+        changed = func.coalesce(models.Recipe.updated_at, models.Recipe.created_at)
+        q = q.filter(changed >= _utc_naive(updated_since)).order_by(changed, models.Recipe.id)
+    return q.offset(skip).limit(limit).all()
 
 @router.get("/public/{share_token}", response_model=schemas.PublicRecipeResponse)
 def read_public_recipe(share_token: str, db: Session = Depends(get_db)):
@@ -159,6 +197,9 @@ def update_recipe(recipe_id: str, recipe: schemas.RecipeCreate, db: Session = De
     
     # Update tags (normalized to lowercase)
     db_recipe.tags = resolve_tags(db, recipe.tags)
+    # Explicit: onupdate only fires when a recipes column changes, so a
+    # tags-only edit would otherwise be invisible to ?updated_since.
+    db_recipe.updated_at = datetime.now(timezone.utc)
 
     db.commit()
     db.refresh(db_recipe)
@@ -316,6 +357,7 @@ def add_recipe_annotation(
     )
     
     db.add(db_annotation)
+    _touch(db, recipe_id)
     db.commit()
     db.refresh(db_annotation)
     return db_annotation
@@ -342,7 +384,8 @@ def update_recipe_annotation(
         with open(filepath, "wb") as buffer:
             shutil.copyfileobj(image.file, buffer)
         annotation.image_path = f"/images/{filename}"
-        
+
+    _touch(db, annotation.recipe_id)
     db.commit()
     db.refresh(annotation)
     return annotation
@@ -353,6 +396,8 @@ def delete_recipe_annotation(annotation_id: str, db: Session = Depends(get_db), 
     if annotation is None:
         raise HTTPException(status_code=404, detail="Annotation not found")
     
+    recipe_id = annotation.recipe_id
     db.delete(annotation)
+    _touch(db, recipe_id)
     db.commit()
     return {"ok": True}
