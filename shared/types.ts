@@ -191,6 +191,20 @@ export interface SessionInfo {
   current: boolean;
 }
 
+export interface ApiTokenInfo {
+  id: string;
+  name: string;
+  scope: 'read';
+  id_prefix: string;
+  created_at: string;
+  last_used_at: string | null;
+}
+
+export interface ApiTokenCreated extends ApiTokenInfo {
+  /** Raw bearer token. Only returned once, at creation. */
+  token: string;
+}
+
 export interface PasskeyInfo {
   id: string;
   nickname: string;

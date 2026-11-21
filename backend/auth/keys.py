@@ -122,6 +122,31 @@ def session_prefix(raw_token: str) -> str:
     return raw_token[:8]
 
 
+# ----- API tokens (read-only agent access) -------------------------------------
+# Format: "hst_" + urlsafe base64. The marker lets deps.py route a bearer value
+# to the api_tokens table instead of sessions, and makes leaked tokens easy to
+# grep for. Lookup prefix is the 8 chars right after the marker.
+
+API_TOKEN_MARKER = "hst_"
+
+
+def generate_api_token() -> Tuple[str, str, str]:
+    """Returns (raw_token, prefix, hash)."""
+    body = base64.urlsafe_b64encode(
+        secrets.token_bytes(SESSION_PREFIX_BYTES + SESSION_SECRET_BYTES)
+    ).decode("ascii").rstrip("=")
+    raw = API_TOKEN_MARKER + body
+    return raw, body[:8], _HASHER.hash(raw)
+
+
+def is_api_token(raw: str) -> bool:
+    return raw.startswith(API_TOKEN_MARKER)
+
+
+def api_token_prefix(raw: str) -> str:
+    return raw[len(API_TOKEN_MARKER):len(API_TOKEN_MARKER) + 8]
+
+
 # ----- Invite codes ------------------------------------------------------------
 # Short, unambiguous alphabet (no 0/O/1/I/L). 10 chars → 10**~7.6 entropy.
 

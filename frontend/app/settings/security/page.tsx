@@ -5,11 +5,12 @@ import { useRouter } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   KeyRound, QrCode, RefreshCw, Trash2, UserPlus, ShieldOff,
-  Loader2, Plus, Copy, Check, Share2,
+  Loader2, Plus, Copy, Check, Share2, Bot,
 } from 'lucide-react'
 import AppNav from '@/components/AppNav'
 import QRCode from 'qrcode'
 import {
+  apiTokenCreate, apiTokenRevoke, apiTokensList,
   authAdminRevokeUser, authCreateInvite, authListSessions, authListUsers,
   authLogout, authRevokeSession, authRotateKey, passkeyRevoke, passkeysList,
 } from '@/lib/api'
@@ -20,7 +21,7 @@ import {
 } from '@/lib/currentUser'
 import { wordsToQrPayload } from '@/lib/bip39'
 import type {
-  AdminUserInfo, InviteCreated, PasskeyInfo, SessionInfo,
+  AdminUserInfo, ApiTokenCreated, ApiTokenInfo, InviteCreated, PasskeyInfo, SessionInfo,
 } from '@hestia/shared/types'
 
 export default function SecurityPage() {
@@ -44,6 +45,7 @@ export default function SecurityPage() {
         <PasskeysSection />
         <KeySection />
         <SessionsSection />
+        <ApiTokensSection />
         {user.is_admin && <AdminSection />}
         <LogoutSection />
       </div>
@@ -287,6 +289,120 @@ function SessionsSection() {
           </li>
         ))}
       </ul>
+    </Section>
+  )
+}
+
+// --- API tokens section ------------------------------------------------------
+
+function ApiTokensSection() {
+  const qc = useQueryClient()
+  const [name, setName] = useState('')
+  const [created, setCreated] = useState<ApiTokenCreated | null>(null)
+  const [copied, setCopied] = useState(false)
+  const { data: tokens, isLoading } = useQuery<ApiTokenInfo[]>({
+    queryKey: ['auth', 'api-tokens'], queryFn: apiTokensList,
+  })
+  const create = useMutation({
+    mutationFn: () => apiTokenCreate(name.trim()),
+    onSuccess: (r: ApiTokenCreated) => {
+      setCreated(r)
+      setCopied(false)
+      setName('')
+      qc.invalidateQueries({ queryKey: ['auth', 'api-tokens'] })
+    },
+  })
+  const revoke = useMutation({
+    mutationFn: apiTokenRevoke,
+    onSuccess: (_r, id) => {
+      if (created?.id === id) setCreated(null)
+      qc.invalidateQueries({ queryKey: ['auth', 'api-tokens'] })
+    },
+  })
+
+  return (
+    <Section title="API tokens"
+      subtitle="Read-only access to recipes and tags for agents and scripts. Send as Authorization: Bearer <token>.">
+      <form onSubmit={(e) => { e.preventDefault(); if (name.trim()) create.mutate() }}
+        style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Name (e.g. Muse meal planner)"
+          maxLength={80}
+          aria-label="Token name"
+          style={{
+            flex: 1, minWidth: 0, padding: '10px 12px', fontSize: 14,
+            border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)',
+            background: 'var(--color-surface)', color: 'var(--color-ink)', outline: 'none',
+          }}
+        />
+        <button type="submit" disabled={!name.trim() || create.isPending}
+          style={ghostButtonStyle(!name.trim() || create.isPending)}>
+          {create.isPending ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+          Create
+        </button>
+      </form>
+      {create.error && (
+        <p style={{ color: 'var(--color-error)', fontSize: 13, marginBottom: 8 }}>
+          {(create.error as Error).message}
+        </p>
+      )}
+
+      {created && (
+        <div style={{
+          padding: 12, marginBottom: 12,
+          background: 'var(--color-surface-sunken)', borderRadius: 'var(--radius-md)',
+        }}>
+          <div style={{ fontSize: 13, color: 'var(--color-ink-secondary)', marginBottom: 8 }}>
+            Copy the token for &ldquo;{created.name}&rdquo; now. It won&apos;t be shown again.
+          </div>
+          <code style={{
+            display: 'block', padding: 8, marginBottom: 8,
+            background: 'var(--color-surface-raised)', borderRadius: 'var(--radius-sm)',
+            fontSize: 12, wordBreak: 'break-all', color: 'var(--color-ink)',
+          }}>{created.token}</code>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={() => {
+              navigator.clipboard.writeText(created.token).then(() => {
+                setCopied(true); setTimeout(() => setCopied(false), 2000)
+              }).catch(() => {})
+            }} style={ghostButtonStyle(false)}>
+              {copied ? <Check size={16} /> : <Copy size={16} />}
+              {copied ? 'Copied' : 'Copy token'}
+            </button>
+            <button onClick={() => setCreated(null)} style={ghostButtonStyle(false)}>Done</button>
+          </div>
+        </div>
+      )}
+
+      {isLoading && <Loader2 size={16} className="animate-spin" />}
+      {tokens && tokens.length === 0 && !created && (
+        <p style={{ color: 'var(--color-ink-muted)', fontSize: 14 }}>No API tokens.</p>
+      )}
+      {tokens && tokens.length > 0 && (
+        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+          {tokens.map((t) => (
+            <li key={t.id} style={listRowStyle()}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ color: 'var(--color-ink)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Bot size={14} style={{ color: 'var(--color-ink-muted)', flexShrink: 0 }} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
+                  <span style={pillStyle('var(--color-sage-muted)', 'var(--color-sage-text)')}>read-only</span>
+                </div>
+                <div style={{ color: 'var(--color-ink-muted)', fontSize: 12 }}>
+                  <code>hst_{t.id_prefix}…</code> · created {fmtDate(t.created_at)} · {t.last_used_at ? `last used ${fmtDate(t.last_used_at)}` : 'never used'}
+                </div>
+              </div>
+              <IconButton title="Revoke token" onClick={() => {
+                if (confirm(`Revoke "${t.name}"? Anything using it will lose access immediately.`)) revoke.mutate(t.id)
+              }}>
+                <Trash2 size={16} />
+              </IconButton>
+            </li>
+          ))}
+        </ul>
+      )}
     </Section>
   )
 }

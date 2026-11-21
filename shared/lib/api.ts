@@ -214,6 +214,19 @@ export const authListSessions = () => apiFetch('/auth/sessions');
 export const authRevokeSession = (idPrefix: string) =>
   apiFetch(`/auth/sessions/${encodeURIComponent(idPrefix)}`, { method: 'DELETE' });
 
+// API tokens (read-only agent access)
+export const apiTokensList = () => apiFetch('/auth/api-tokens');
+
+export const apiTokenCreate = (name: string) =>
+  apiFetch('/auth/api-tokens', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+
+export const apiTokenRevoke = (id: string) =>
+  apiFetch(`/auth/api-tokens/${encodeURIComponent(id)}`, { method: 'DELETE' });
+
 // Admin
 export const authCreateInvite = (display_name: string) =>
   apiFetch('/auth/invites', {

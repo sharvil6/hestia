@@ -22,7 +22,7 @@ from auth.deps import (
     set_session_cookie,
 )
 from database import get_db
-from models import AuthKey, Invite, Passkey, Session, User, WebAuthnChallenge
+from models import ApiToken, AuthKey, Invite, Passkey, Session, User, WebAuthnChallenge
 import schemas
 
 logger = logging.getLogger("hestia.auth")
@@ -391,6 +391,104 @@ def revoke_session(
     return {"ok": True}
 
 
+# ----- API tokens (read-only agent access) -------------------------------------
+# Management requires a real browser/app session (get_current_session ignores
+# API tokens), so a leaked token can't mint or revoke tokens.
+
+MAX_ACTIVE_API_TOKENS = 20
+
+
+class ApiTokenCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+
+
+class ApiTokenOut(BaseModel):
+    id: str
+    name: str
+    scope: str
+    id_prefix: str
+    created_at: datetime
+    last_used_at: Optional[datetime] = None
+
+
+class ApiTokenCreated(ApiTokenOut):
+    # Shown exactly once, at creation. Never retrievable afterwards.
+    token: str
+
+
+def _token_out(t: ApiToken) -> ApiTokenOut:
+    return ApiTokenOut(
+        id=t.id, name=t.name, scope=t.scope, id_prefix=t.id_prefix,
+        created_at=t.created_at, last_used_at=t.last_used_at,
+    )
+
+
+@router.get("/api-tokens", response_model=List[ApiTokenOut])
+def list_api_tokens(
+    current: Session = Depends(get_current_session),
+    db: DBSession = Depends(get_db),
+):
+    rows = (
+        db.query(ApiToken)
+        .filter(ApiToken.user_id == current.user_id, ApiToken.revoked_at.is_(None))
+        .order_by(ApiToken.created_at.desc())
+        .all()
+    )
+    return [_token_out(t) for t in rows]
+
+
+@router.post("/api-tokens", response_model=ApiTokenCreated, status_code=201)
+def create_api_token(
+    payload: ApiTokenCreate,
+    request: Request,
+    current: Session = Depends(get_current_session),
+    db: DBSession = Depends(get_db),
+):
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="name is required")
+    active = (
+        db.query(ApiToken)
+        .filter(ApiToken.user_id == current.user_id, ApiToken.revoked_at.is_(None))
+        .count()
+    )
+    if active >= MAX_ACTIVE_API_TOKENS:
+        raise HTTPException(status_code=400, detail=f"limit of {MAX_ACTIVE_API_TOKENS} active tokens reached")
+    raw, prefix, hashed = keyutil.generate_api_token()
+    tok = ApiToken(id_prefix=prefix, id_hash=hashed, user_id=current.user_id, name=name, scope="read")
+    db.add(tok)
+    db.commit()
+    db.refresh(tok)
+    user = db.query(User).filter(User.id == current.user_id).first()
+    audit.record_event(db, request, event_type="api_token_create", user=user, detail=f"{name} ({prefix})")
+    return ApiTokenCreated(**_token_out(tok).model_dump(), token=raw)
+
+
+@router.delete("/api-tokens/{token_id}")
+def revoke_api_token(
+    token_id: str,
+    request: Request,
+    current: Session = Depends(get_current_session),
+    db: DBSession = Depends(get_db),
+):
+    tok = (
+        db.query(ApiToken)
+        .filter(
+            ApiToken.id == token_id,
+            ApiToken.user_id == current.user_id,
+            ApiToken.revoked_at.is_(None),
+        )
+        .first()
+    )
+    if tok is None:
+        raise HTTPException(status_code=404, detail="token not found")
+    tok.revoked_at = _now()
+    db.commit()
+    user = db.query(User).filter(User.id == current.user_id).first()
+    audit.record_event(db, request, event_type="api_token_revoke", user=user, detail=f"{tok.name} ({tok.id_prefix})")
+    return {"ok": True}
+
+
 # ----- Admin: users + revoke key -----------------------------------------------
 
 
@@ -446,6 +544,9 @@ def admin_revoke_user(
     )
     db.query(Passkey).filter(Passkey.user_id == user_id, Passkey.revoked_at.is_(None)).update(
         {Passkey.revoked_at: now}
+    )
+    db.query(ApiToken).filter(ApiToken.user_id == user_id, ApiToken.revoked_at.is_(None)).update(
+        {ApiToken.revoked_at: now}
     )
     db.query(Session).filter(Session.user_id == user_id).delete()
     db.commit()
