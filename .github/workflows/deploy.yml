@@ -157,7 +157,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # eas-cli@latest requires Node >= 22 (its @oclif deps declare it);
+          # the other jobs don't install eas-cli and stay on 20.
+          node-version: '22'
           cache: npm
           cache-dependency-path: mobile/package-lock.json
       - uses: expo/expo-github-action@v8
