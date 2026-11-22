@@ -81,8 +81,18 @@ def _resolve_session(request: Request, db: DBSession) -> tuple[Session, User] | 
 
 # ----- API tokens --------------------------------------------------------------
 
-# Routes a read-only API token may call. Everything else — writes, drafts, meal
-# plans, auth/session/token management, admin — needs a real session.
+# Token scopes. Everything not granted here — edits, deletes, annotations,
+# drafts, meal plans, URL/image ingest, auth/session/token management, admin —
+# needs a real session.
+#   read         GET on recipe + tag reads
+#   read_create  read, plus POST /recipes/ (create from structured JSON).
+#                Deliberately not /recipes/ingest/url: that makes the server
+#                fetch arbitrary URLs from inside the home network.
+SCOPE_READ = "read"
+SCOPE_READ_CREATE = "read_create"
+TOKEN_SCOPES = (SCOPE_READ, SCOPE_READ_CREATE)
+_CREATE_RECIPE_PATHS = {"/recipes", "/recipes/"}
+
 _READ_SCOPE_PREFIXES = ("/recipes", "/tags")
 _READ_SCOPE_DENY_PREFIXES = ("/recipes/drafts",)
 _READ_METHODS = {"GET", "HEAD"}
@@ -103,14 +113,25 @@ def _read_scope_allows(request: Request) -> bool:
     return any(_path_matches(path, p) for p in _READ_SCOPE_PREFIXES)
 
 
+def _scope_allows(scope: str, request: Request) -> bool:
+    if scope not in TOKEN_SCOPES:
+        return False
+    if _read_scope_allows(request):
+        return True
+    return (
+        scope == SCOPE_READ_CREATE
+        and request.method == "POST"
+        and request.url.path in _CREATE_RECIPE_PATHS
+    )
+
+
 def _aware(dt: datetime) -> datetime:
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
-def _resolve_api_token(request: Request, db: DBSession) -> User | None:
-    """Bearer-only (never a cookie). Raises 403 for a valid token used outside
-    its scope, so callers get a clear "wrong credential" rather than a 401."""
-    raw_token = _read_bearer(request)
+def authenticate_api_token(raw_token: str | None, db: DBSession) -> tuple[ApiToken, User] | None:
+    """Verify a raw `hst_` token (no scope check). Shared by the REST bearer
+    path below and the /mcp endpoint, which applies scopes per tool."""
     if not raw_token or not is_api_token(raw_token):
         return None
     tok = (
@@ -120,11 +141,6 @@ def _resolve_api_token(request: Request, db: DBSession) -> User | None:
     )
     if tok is None or not verify_session_token(raw_token, tok.id_hash):
         return None
-    if tok.scope != "read" or not _read_scope_allows(request):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="API token is read-only: only GET /recipes and /tags are allowed",
-        )
     user = db.query(User).filter(User.id == tok.user_id).first()
     if user is None:
         return None
@@ -132,6 +148,29 @@ def _resolve_api_token(request: Request, db: DBSession) -> User | None:
     if tok.last_used_at is None or now - _aware(tok.last_used_at) > _LAST_USED_RESOLUTION:
         tok.last_used_at = now
         db.commit()
+    return tok, user
+
+
+def read_bearer(request: Request) -> str | None:
+    return _read_bearer(request)
+
+
+def _resolve_api_token(request: Request, db: DBSession) -> User | None:
+    """Bearer-only (never a cookie). Raises 403 for a valid token used outside
+    its scope, so callers get a clear "wrong credential" rather than a 401."""
+    resolved = authenticate_api_token(_read_bearer(request), db)
+    if resolved is None:
+        return None
+    tok, user = resolved
+    if not _scope_allows(tok.scope, request):
+        detail = (
+            "API token may only read /recipes and /tags and create recipes via POST /recipes/"
+            if tok.scope == SCOPE_READ_CREATE
+            else "API token is read-only: only GET /recipes and /tags are allowed"
+        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
+    # Downstream handlers (recipe create) use this to attribute the action.
+    request.state.api_token = tok
     return user
 
 

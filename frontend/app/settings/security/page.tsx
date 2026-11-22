@@ -21,7 +21,7 @@ import {
 } from '@/lib/currentUser'
 import { wordsToQrPayload } from '@/lib/bip39'
 import type {
-  AdminUserInfo, ApiTokenCreated, ApiTokenInfo, InviteCreated, PasskeyInfo, SessionInfo,
+  AdminUserInfo, ApiTokenCreated, ApiTokenInfo, ApiTokenScope, InviteCreated, PasskeyInfo, SessionInfo,
 } from '@hestia/shared/types'
 
 export default function SecurityPage() {
@@ -295,20 +295,27 @@ function SessionsSection() {
 
 // --- API tokens section ------------------------------------------------------
 
+const SCOPE_OPTIONS: { value: ApiTokenScope; label: string }[] = [
+  { value: 'read', label: 'Read only' },
+  { value: 'read_create', label: 'Read + add recipes' },
+]
+
 function ApiTokensSection() {
   const qc = useQueryClient()
   const [name, setName] = useState('')
+  const [scope, setScope] = useState<ApiTokenScope>('read')
   const [created, setCreated] = useState<ApiTokenCreated | null>(null)
   const [copied, setCopied] = useState(false)
   const { data: tokens, isLoading } = useQuery<ApiTokenInfo[]>({
     queryKey: ['auth', 'api-tokens'], queryFn: apiTokensList,
   })
   const create = useMutation({
-    mutationFn: () => apiTokenCreate(name.trim()),
+    mutationFn: () => apiTokenCreate(name.trim(), scope),
     onSuccess: (r: ApiTokenCreated) => {
       setCreated(r)
       setCopied(false)
       setName('')
+      setScope('read')
       qc.invalidateQueries({ queryKey: ['auth', 'api-tokens'] })
     },
   })
@@ -322,9 +329,9 @@ function ApiTokensSection() {
 
   return (
     <Section title="API tokens"
-      subtitle="Read-only access to recipes and tags for agents and scripts. Send as Authorization: Bearer <token>.">
+      subtitle="Access to recipes and tags for agents and scripts. Tokens can read, or read and add new recipes; they can never edit or delete. Send as Authorization: Bearer <token>.">
       <form onSubmit={(e) => { e.preventDefault(); if (name.trim()) create.mutate() }}
-        style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+        style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -332,11 +339,23 @@ function ApiTokensSection() {
           maxLength={80}
           aria-label="Token name"
           style={{
-            flex: 1, minWidth: 0, padding: '10px 12px', fontSize: 14,
+            flex: '1 1 200px', minWidth: 0, padding: '10px 12px', fontSize: 14,
             border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)',
             background: 'var(--color-surface)', color: 'var(--color-ink)', outline: 'none',
           }}
         />
+        <select
+          value={scope}
+          onChange={(e) => setScope(e.target.value as ApiTokenScope)}
+          aria-label="Token access"
+          style={{
+            padding: '10px 12px', fontSize: 14,
+            border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)',
+            background: 'var(--color-surface)', color: 'var(--color-ink)', outline: 'none',
+          }}
+        >
+          {SCOPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
         <button type="submit" disabled={!name.trim() || create.isPending}
           style={ghostButtonStyle(!name.trim() || create.isPending)}>
           {create.isPending ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
@@ -388,7 +407,9 @@ function ApiTokensSection() {
                 <div style={{ color: 'var(--color-ink)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 8 }}>
                   <Bot size={14} style={{ color: 'var(--color-ink-muted)', flexShrink: 0 }} />
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
-                  <span style={pillStyle('var(--color-sage-muted)', 'var(--color-sage-text)')}>read-only</span>
+                  {t.scope === 'read_create'
+                    ? <span style={pillStyle('var(--color-brand-muted)', 'var(--color-brand-text)')}>read + add</span>
+                    : <span style={pillStyle('var(--color-sage-muted)', 'var(--color-sage-text)')}>read-only</span>}
                 </div>
                 <div style={{ color: 'var(--color-ink-muted)', fontSize: 12 }}>
                   <code>hst_{t.id_prefix}…</code> · created {fmtDate(t.created_at)} · {t.last_used_at ? `last used ${fmtDate(t.last_used_at)}` : 'never used'}

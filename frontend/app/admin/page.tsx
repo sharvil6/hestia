@@ -109,6 +109,7 @@ const EVENT_FILTERS: { value: string; label: string }[] = [
   { value: 'enroll', label: 'Enrollments' },
   { value: 'key_rotate', label: 'Key rotations' },
   { value: 'api_token_create', label: 'API tokens' },
+  { value: 'recipe_create_via_token', label: 'Agent recipes' },
 ]
 
 function EventsSection() {
@@ -168,6 +169,7 @@ function EventBadge({ event }: { event: AuthEvent }) {
     key_rotate: { label: 'key rotated', bg: 'var(--color-brand-muted)', color: 'var(--color-brand-text)' },
     api_token_create: { label: 'token created', bg: 'var(--color-brand-muted)', color: 'var(--color-brand-text)' },
     api_token_revoke: { label: 'token revoked', bg: 'var(--color-surface-sunken)', color: 'var(--color-ink-secondary)' },
+    recipe_create_via_token: { label: 'recipe via token', bg: 'var(--color-sage-muted)', color: 'var(--color-sage-text)' },
   }
   const m = map[event.event_type] ?? { label: event.event_type, bg: 'var(--color-surface-sunken)', color: 'var(--color-ink-secondary)' }
   const method = event.auth_method === 'passkey' ? 'passkey' : event.auth_method === 'word_key' ? 'words' : event.auth_method

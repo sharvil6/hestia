@@ -4,7 +4,7 @@ import base64
 import json
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
@@ -400,6 +400,7 @@ MAX_ACTIVE_API_TOKENS = 20
 
 class ApiTokenCreate(BaseModel):
     name: str = Field(min_length=1, max_length=80)
+    scope: Literal["read", "read_create"] = "read"
 
 
 class ApiTokenOut(BaseModel):
@@ -455,12 +456,14 @@ def create_api_token(
     if active >= MAX_ACTIVE_API_TOKENS:
         raise HTTPException(status_code=400, detail=f"limit of {MAX_ACTIVE_API_TOKENS} active tokens reached")
     raw, prefix, hashed = keyutil.generate_api_token()
-    tok = ApiToken(id_prefix=prefix, id_hash=hashed, user_id=current.user_id, name=name, scope="read")
+    tok = ApiToken(id_prefix=prefix, id_hash=hashed, user_id=current.user_id, name=name, scope=payload.scope)
     db.add(tok)
     db.commit()
     db.refresh(tok)
     user = db.query(User).filter(User.id == current.user_id).first()
-    audit.record_event(db, request, event_type="api_token_create", user=user, detail=f"{name} ({prefix})")
+    audit.record_event(
+        db, request, event_type="api_token_create", user=user, detail=f"{name} ({prefix}, {payload.scope})"
+    )
     return ApiTokenCreated(**_token_out(tok).model_dump(), token=raw)
 
 
