@@ -55,7 +55,19 @@ def seed_users():
 
 seed_users()
 
-app = FastAPI(title="Hestia Engine")
+import contextlib
+
+from mcp_server import fresh_session_manager, mcp_asgi_app
+
+
+@contextlib.asynccontextmanager
+async def lifespan(_app):
+    # The MCP session manager owns a task group that must span the app's life.
+    async with fresh_session_manager().run():
+        yield
+
+
+app = FastAPI(title="Hestia Engine", lifespan=lifespan)
 
 # CORS setup — scope origins for credential support
 allowed_origins = os.environ.get(
@@ -91,6 +103,12 @@ app.include_router(recipes.router)
 app.include_router(tags.router)
 app.include_router(plans.router)
 app.include_router(audit.router)
+
+# MCP for agents (Muse etc.): API-token auth, see mcp_server.py. Registered as a
+# plain route (not a Mount) so both /mcp and /mcp/ work without redirects.
+from starlette.routing import Route
+app.router.routes.append(Route("/mcp", endpoint=mcp_asgi_app, methods=["GET", "POST", "DELETE"]))
+app.router.routes.append(Route("/mcp/", endpoint=mcp_asgi_app, methods=["GET", "POST", "DELETE"]))
 
 @app.get("/")
 def read_root():
