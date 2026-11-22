@@ -191,10 +191,12 @@ export interface SessionInfo {
   current: boolean;
 }
 
+export type ApiTokenScope = 'read' | 'read_create';
+
 export interface ApiTokenInfo {
   id: string;
   name: string;
-  scope: 'read';
+  scope: ApiTokenScope;
   id_prefix: string;
   created_at: string;
   last_used_at: string | null;

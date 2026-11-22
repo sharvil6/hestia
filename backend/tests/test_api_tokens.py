@@ -119,3 +119,75 @@ def test_api_token_cannot_manage_tokens(real_auth):
     r = real_auth.post("/auth/api-tokens", json={"name": "escalate"}, headers=_bearer(tok))
     assert r.status_code == 401
     assert real_auth.get("/auth/api-tokens", headers=_bearer(tok)).status_code == 401
+
+
+# ----- read_create scope ---------------------------------------------------------
+
+
+def _mint_scoped(client, scope, name="Muse"):
+    r = client.post("/auth/api-tokens", json={"name": name, "scope": scope})
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+def test_default_scope_is_read_and_unknown_scope_rejected(client):
+    assert _mint(client)["scope"] == "read"
+    assert client.post("/auth/api-tokens", json={"name": "x", "scope": "admin"}).status_code == 422
+    assert client.post("/auth/api-tokens", json={"name": "x", "scope": "write"}).status_code == 422
+
+
+def test_read_create_token_can_create_recipe_attributed_to_owner(real_auth):
+    body = _mint_scoped(real_auth, "read_create", "Muse importer")
+    assert body["scope"] == "read_create"
+    h = _bearer(body["token"])
+
+    r = real_auth.post("/recipes/", json={**RECIPE_PAYLOAD, "title": "From Muse"}, headers=h)
+    assert r.status_code == 200, r.text
+    created = r.json()
+    assert created["created_by"] == "1"
+    # It can still read, including the thing it just made.
+    assert real_auth.get(f"/recipes/{created['id']}", headers=h).status_code == 200
+    assert [x["title"] for x in real_auth.get("/recipes/summary", headers=h).json()] == ["From Muse"]
+
+
+def test_read_create_token_creation_is_audited(real_auth):
+    from database import get_db
+    from models import AuthEvent
+    body = _mint_scoped(real_auth, "read_create", "Muse importer")
+    real_auth.post("/recipes/", json={**RECIPE_PAYLOAD, "title": "Audited"}, headers=_bearer(body["token"]))
+    db = next(app.dependency_overrides[get_db]())
+    events = db.query(AuthEvent).filter(AuthEvent.event_type == "recipe_create_via_token").all()
+    assert len(events) == 1
+    assert events[0].user_id == "1"
+    assert "Muse importer" in events[0].detail and "Audited" in events[0].detail
+
+
+def test_read_token_still_cannot_create(real_auth):
+    tok = _mint(real_auth)["token"]
+    r = real_auth.post("/recipes/", json=RECIPE_PAYLOAD, headers=_bearer(tok))
+    assert r.status_code == 403
+
+
+@pytest.mark.parametrize("method,path,kwargs", [
+    ("put", "/recipes/abc", {"json": RECIPE_PAYLOAD}),
+    ("delete", "/recipes/abc", {}),
+    ("post", "/recipes/abc/share", {}),
+    ("post", "/recipes/abc/annotations", {"data": {"content": "hi"}}),
+    ("post", "/recipes/ingest/url", {"data": {"url": "http://127.0.0.1:8000/"}}),
+    ("post", "/recipes/scrape/preview", {"data": {"url": "http://127.0.0.1:8000/"}}),
+    ("post", "/recipes/upload-image", {}),
+    ("post", "/recipes/drafts/", {"json": {}}),
+    ("post", "/plans/", {"json": {"week_start": "2026-11-23"}}),
+    ("post", "/auth/api-tokens", {"json": {"name": "escalate", "scope": "read_create"}}),
+])
+def test_read_create_token_is_limited_to_create(real_auth, method, path, kwargs):
+    from auth.deps import get_current_session
+    tok = _mint_scoped(real_auth, "read_create")["token"]
+    app.dependency_overrides.pop(get_current_session)  # token-management must see the real dep too
+    r = getattr(real_auth, method)(path, headers=_bearer(tok), **kwargs)
+    assert r.status_code in (401, 403), (path, r.status_code, r.text)
+
+
+def test_session_created_recipe_also_records_created_by(client):
+    r = client.post("/recipes/", json=RECIPE_PAYLOAD)
+    assert r.json()["created_by"] == "1"

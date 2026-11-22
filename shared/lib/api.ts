@@ -217,11 +217,11 @@ export const authRevokeSession = (idPrefix: string) =>
 // API tokens (read-only agent access)
 export const apiTokensList = () => apiFetch('/auth/api-tokens');
 
-export const apiTokenCreate = (name: string) =>
+export const apiTokenCreate = (name: string, scope: 'read' | 'read_create' = 'read') =>
   apiFetch('/auth/api-tokens', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, scope }),
   });
 
 export const apiTokenRevoke = (id: string) =>

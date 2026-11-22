@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 from typing import List, Optional
@@ -12,6 +12,7 @@ import secrets
 import shutil
 import models, schemas
 from database import get_db
+from auth import audit
 from auth.deps import get_current_user
 from services.grocery import sync_grocery_items
 
@@ -139,8 +140,25 @@ def read_recipe_summaries(
     ingredient names, without steps or annotations. Filters combine with AND.
     Ordered oldest change first (stable for paging). With no filters it lists
     every recipe, so a sync client can also diff ids to detect deletions."""
+    return query_summaries(
+        db, tags=tag, max_total_time=max_total_time, q=q,
+        updated_since=updated_since, skip=skip, limit=limit,
+    )
+
+
+def query_summaries(
+    db: Session,
+    *,
+    tags: List[str] = (),
+    max_total_time: Optional[int] = None,
+    q: Optional[str] = None,
+    updated_since: Optional[datetime] = None,
+    skip: int = 0,
+    limit: int = 500,
+) -> List[schemas.RecipeListItem]:
+    """Shared by GET /recipes/summary and the MCP search_recipes tool."""
     query = db.query(models.Recipe).options(selectinload(models.Recipe.tags))
-    for name in {t.strip().lower() for t in tag if t.strip()}:
+    for name in {t.strip().lower() for t in tags if t and t.strip()}:
         query = query.filter(models.Recipe.tags.any(models.Tag.name == name))
     if max_total_time is not None:
         total = func.coalesce(models.Recipe.prep_time, 0) + func.coalesce(models.Recipe.cook_time, 0)
@@ -212,9 +230,16 @@ def unshare_recipe(recipe_id: str, db: Session = Depends(get_db), _user=Depends(
     db.commit()
     return schemas.ShareResponse(share_token=None)
 
-@router.post("/", response_model=schemas.RecipeResponse)
-def create_recipe(recipe: schemas.RecipeCreate, db: Session = Depends(get_db), _user=Depends(get_current_user)):
+def _save_new_recipe(
+    db: Session,
+    recipe: schemas.RecipeCreate,
+    user: models.User,
+    request: Optional[Request] = None,
+) -> models.Recipe:
+    """Single path for every recipe creation (manual, URL ingest, image ingest,
+    API token) so ownership and attribution can't be forgotten."""
     db_recipe = models.Recipe(
+        created_by=user.id,
         title=recipe.title,
         description=recipe.description,
         cover_image=recipe.cover_image,
@@ -232,7 +257,26 @@ def create_recipe(recipe: schemas.RecipeCreate, db: Session = Depends(get_db), _
     db.add(db_recipe)
     db.commit()
     db.refresh(db_recipe)
+
+    # Agent-created recipes are rare and worth seeing in the admin activity log
+    # (which token, what it added). Browser/app creates aren't logged there.
+    tok = getattr(request.state, "api_token", None) if request is not None else None
+    if tok is not None:
+        audit.record_event(
+            db, request, event_type="recipe_create_via_token", user=user,
+            detail=f"{tok.name} ({tok.id_prefix}): {db_recipe.title}",
+        )
     return db_recipe
+
+
+@router.post("/", response_model=schemas.RecipeResponse)
+def create_recipe(
+    recipe: schemas.RecipeCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    return _save_new_recipe(db, recipe, user, request)
 
 @router.delete("/{recipe_id}")
 def delete_recipe(recipe_id: str, db: Session = Depends(get_db), _user=Depends(get_current_user)):
@@ -322,12 +366,12 @@ def preview_scrape(url: str = Form(...), _user=Depends(get_current_user)):
         raise HTTPException(status_code=422, detail=f"Failed to scrape recipe: {str(e)}")
 
 @router.post("/ingest/url", response_model=schemas.RecipeResponse)
-def ingest_from_scraper(url: str = Form(...), db: Session = Depends(get_db), _user=Depends(get_current_user)):
+def ingest_from_scraper(url: str = Form(...), db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     logger.info("Ingest from URL requested: %s", url)
     try:
         recipe_schema = scrape_recipe_from_url(url)
         logger.info("Ingest scrape succeeded: %s", recipe_schema.title)
-        return create_recipe(recipe_schema, db)
+        return _save_new_recipe(db, recipe_schema, user)
     except NoSchemaFoundInWildMode:
         logger.warning("No schema found in wild mode for URL: %s", url)
         raise HTTPException(
@@ -367,11 +411,11 @@ async def preview_vision(
         raise HTTPException(status_code=422, detail=f"Failed to extract recipe from image: {str(e)}")
 
 @router.post("/ingest/image", response_model=schemas.RecipeResponse)
-async def ingest_from_vision(file: UploadFile = File(...), db: Session = Depends(get_db), _user=Depends(get_current_user)):
+async def ingest_from_vision(file: UploadFile = File(...), db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     _guard_demo_llm()
     contents = await file.read()
     recipe_schema = extract_recipe_from_image(contents)
-    return create_recipe(recipe_schema, db)
+    return _save_new_recipe(db, recipe_schema, user)
 
 @router.get("/search/fts", response_model=List[schemas.RecipeResponse])
 def search_recipes(q: str, db: Session = Depends(get_db), _user=Depends(get_current_user)):
